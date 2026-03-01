@@ -4,10 +4,9 @@ This is a library mod.
 
 ## Usage
 
-In order to use this mod as a template:
+In order to use this mod:
 
-1. Add this mod as a dependency in your `build.gradle`:
-
+- Add this mod as a dependency in your `build.gradle`:
 ```gradle
 repositories {
     maven {
@@ -20,4 +19,7 @@ dependencies {
 }
 ```
 
-2. Initalize `ServerMultiBossBar` in your entity's class and add bars via `.addBossBar()`
+- Initalize `ServerMultiBossBar` in your entity's class and add bars via `.addBossBar()`
+
+## In-game Usage
+This mod is quite limited to what it can do in-game however there is a command that exists that allows a basic usage of the boss bar
