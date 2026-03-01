@@ -9,9 +9,15 @@ In order to use this mod as a template:
 1. Add this mod as a dependency in your `build.gradle`:
 
 ```gradle
+repositories {
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+}
 dependencies {
-    modImplementation "<replace-me>:multi-boss-bar:<version>"
+    modImplementation "maven.modrinth:multi-boss-bar:<version>"
 }
 ```
 
-2. Initalize `ServerMultiBossBar` in your entity's class.
+2. Initalize `ServerMultiBossBar` in your entity's class and add bars via `.addBossBar()`
