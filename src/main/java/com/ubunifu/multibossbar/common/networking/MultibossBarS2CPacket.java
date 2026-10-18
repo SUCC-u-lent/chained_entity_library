@@ -96,6 +96,13 @@ public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements Cust
 		return builder.build();
 	}
 
+	public static MultibossBarS2CPacket setScale(ServerBossBarSection serverBossBarSection, int scaleSupplier) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.SET_BAR_SCALE );
+		builder.setRemainingConsumer(p->p.writeInt(scaleSupplier));
+		return builder.build();
+	}
+
 	public static MultibossBarS2CPacket updateDragonMusic(ServerBossBarSection serverBossBarSection) {
 		Builder builder = new Builder( serverBossBarSection );
 		builder.setPacketType( PacketType.UPDATE_DRAGON_MUSIC );
@@ -116,8 +123,14 @@ public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements Cust
 		builder.setRemainingConsumer(p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode( p, serverBossBarSection.name ));
 		return builder.build();
 	}
+	public static MultibossBarS2CPacket createBar(ServerMultiBossBar serverBossBar) {
+		Builder builder = new Builder( serverBossBar );
+		builder.setPacketType( PacketType.CREATE_BAR );
+		builder.setRemainingConsumer(p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode( p, serverBossBar.getDisplayName() ));
+		return builder.build();
+	}
 
-	public static MultibossBarS2CPacket removeBar(ServerMultiBossBar serverMultiBossBar) {
+	public static MultibossBarS2CPacket removeBar(ServerBossBarSection serverMultiBossBar) {
 		Builder builder = new Builder(serverMultiBossBar);
 		builder.setPacketType(PacketType.REMOVE_BAR);
 		return builder.build();

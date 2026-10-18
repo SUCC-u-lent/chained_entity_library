@@ -10,6 +10,10 @@ import java.util.*;
 import java.util.function.Function;
 
 public class ClientMultiBossBar extends MultiBossBar {
+	public ClientMultiBossBar(UUID uuid, List<BossBarSection> bossBarSections, FillType fillType)
+	{
+		super(uuid, bossBarSections, fillType);
+	}
 	public ClientMultiBossBar(List<BossBarSection> bossBarSections, FillType fillType) {
 		super(bossBarSections, fillType);
 	}

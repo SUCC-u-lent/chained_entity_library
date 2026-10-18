@@ -1,6 +1,7 @@
 package com.ubunifu.multibossbar.common.boss_bar;
 
 public enum PacketType {
+	CREATE_BAR,
 	REMOVE_BAR,
 	ADD_BAR,
 	UPDATE_NAME,
@@ -12,5 +13,5 @@ public enum PacketType {
 	UPDATE_THICKEN_FOG,
 	CLEAR_BARS,
 	SEND_ALL_BARS,
-	UPDATE_VISIBILITY
+	SET_BAR_SCALE, UPDATE_VISIBILITY
 }

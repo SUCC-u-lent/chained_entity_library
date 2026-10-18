@@ -24,16 +24,40 @@ public class ServerMultiBossBar extends MultiBossBar {
 		this.visible = true;
 	}
 
+	public static void removeBar(ServerMultiBossBar bar) {
+		Set<ServerPlayerEntity> playerEntities = Set.copyOf( bar.players );
+		for (ServerPlayerEntity plr : playerEntities) bar.sendPacket(
+			MultibossBarS2CPacket.clearBars(bar),
+			plr
+		);
+	}
+
 	public Set<ServerPlayerEntity> getPlayers() { return Set.copyOf( players ); }
 	public void setPlayers(Set<ServerPlayerEntity> players) {
-		this.clearBars();
+		Set<ServerPlayerEntity> previousPlayerList = new HashSet<>(this.players);
+		this.players.clear();
 		this.players.addAll(players);
 		players.forEach(this::sendBars);
+		previousPlayerList.removeIf(p->players.stream().anyMatch(r->p.getUuid().equals(r.getUuid())));
+		for (ServerPlayerEntity plr : previousPlayerList)
+			sendPacket(MultibossBarS2CPacket::clearBars,plr);
+	}
+	public void resync()
+	{
+		for (ServerPlayerEntity player : this.players)
+			sendPacket(MultibossBarS2CPacket::sendBars,player);
+	}
+	public void resync(int index)
+	{
+		BossBarSection section = this.get(index);
+		if (section == null) return;
+		for (ServerPlayerEntity player : this.players)
+			sendPacket(MultibossBarS2CPacket.addBar((ServerBossBarSection) section),player);
 	}
 	public void removePlayer(ServerPlayerEntity player) {
 		if (this.players.removeIf(p->p.getUuid().equals(player.getUuid())))
 		{
-			sendPacket(MultibossBarS2CPacket::removeBar, player);
+			sendPacket(MultibossBarS2CPacket::clearBars, player);
 		}
 	}
 	public void addPlayer(ServerPlayerEntity player) {

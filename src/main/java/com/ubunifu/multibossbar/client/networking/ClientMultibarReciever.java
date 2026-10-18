@@ -1,6 +1,7 @@
 package com.ubunifu.multibossbar.client.networking;
 
-import com.ubunifu.multibossbar.common.boss_bar.PacketType;
+import com.ubunifu.multibossbar.common.MultibossbarMod;
+import com.ubunifu.multibossbar.common.boss_bar.*;
 import com.ubunifu.multibossbar.common.boss_bar.container.*;
 import com.ubunifu.multibossbar.common.boss_bar.sections.ClientBossBarSection;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
@@ -31,18 +32,30 @@ public class ClientMultibarReciever {
 
 	private static void receiveContainerBar(UUID bossBarUUID, PacketByteBuf packetByteBuf) {
 		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
-		processBody(bossBar,null,packetByteBuf);
+		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
+		if (bossBar == null) {
+			if (packetType != PacketType.CREATE_BAR) return;
+			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
+			multiBossBars.add(bossBar);
+		}
+		processBody(packetType, bossBar, null, packetByteBuf);
 	}
 
 	private static void receiveSectionBar(UUID bossBarUUID, PacketByteBuf packetByteBuf) {
 		int barIndex = packetByteBuf.readInt();
-		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
-		ClientBossBarSection section = (ClientBossBarSection) bossBar.getBossBars().get( barIndex );
-		processBody(bossBar,section,packetByteBuf);
-	}
-	private static void processBody(ClientMultiBossBar bossBar, @Nullable ClientBossBarSection section, PacketByteBuf packetByteBuf) {
-		// Upon entering this the packet buffer has already consumed all the "headers" meaning all thats left is the true "payload" part.
 		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
+		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
+		if (bossBar == null) {
+			if (packetType != PacketType.CREATE_BAR) return;
+			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
+			multiBossBars.add(bossBar);
+		}
+		ClientBossBarSection section = (ClientBossBarSection) bossBar.getBossBars().get( barIndex );
+		processBody(packetType, bossBar, section, packetByteBuf);
+	}
+	private static void processBody(PacketType packetType, ClientMultiBossBar bossBar, @Nullable ClientBossBarSection section, PacketByteBuf packetByteBuf) {
+		// Upon entering this the packet buffer has already consumed all the "headers" meaning all thats left is the true "payload" part.
+		MultibossbarMod.LOGGER.info("Received {} packet", packetType.name());
 		// Everything after this changes based on the above packet type.
 		switch (packetType){
 			case UPDATE_NAME -> {
@@ -63,6 +76,13 @@ public class ClientMultibarReciever {
 				float progress = packetByteBuf.readFloat();
 				Objects.requireNonNull(section);
 				section.setPercent( progress );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case SET_BAR_SCALE -> {
+				int barScale = packetByteBuf.readInt();
+				Objects.requireNonNull(section);
+				section.setScaleSupplier( barScale );
 				bossBar.replaceBar(section);
 				replaceBar(bossBar);
 			}
@@ -103,7 +123,9 @@ public class ClientMultibarReciever {
 			case ADD_BAR -> {
 				int index = packetByteBuf.readInt();
 				BossBarSection section1 = BossBarSection.deserializeFromBuf(packetByteBuf);
-				bossBar.setBossBar(index,section1);
+				if (bossBar.isIndexOccupied(index))
+					bossBar.setBossBar(index,section1);
+				else bossBar.addBossBar(section1);
 				replaceBar(bossBar);
 			}
 			case SEND_ALL_BARS -> {
@@ -129,13 +151,7 @@ public class ClientMultibarReciever {
 
 	private static ClientMultiBossBar verifyBarExists(UUID uuid)
 	{
-		ClientMultiBossBar multiBossBar = multiBossBars.stream().filter(bar -> bar.getUuid().equals(uuid)).findFirst().orElse(null);
-		if (multiBossBar == null)
-		{
-			multiBossBar = new ClientMultiBossBar();
-			multiBossBars.add(multiBossBar);
-		}
-		return multiBossBar;
+		return multiBossBars.stream().filter(bar -> bar.getUuid().equals(uuid)).findFirst().orElse(null);
 	}
 	private static void replaceBar(ClientMultiBossBar newBar)
 	{

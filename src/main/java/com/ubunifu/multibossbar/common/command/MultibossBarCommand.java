@@ -2,30 +2,38 @@ package com.ubunifu.multibossbar.common.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.*;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.ubunifu.multibossbar.common.boss_bar.FillType;
 import com.ubunifu.multibossbar.common.boss_bar.SectionType;
 import com.ubunifu.multibossbar.common.boss_bar.container.ServerMultiBossBar;
 import com.ubunifu.multibossbar.common.boss_bar.sections.ServerBossBarSection;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
+import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
 import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.entity.boss.BossBar;
+import net.minecraft.registry.HolderLookup;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import org.quiltmc.loader.api.QuiltLoader;
 
 import java.util.*;
 
 public class MultibossBarCommand {
 	private static final Map<String, ServerMultiBossBar> BARS = new HashMap<>();
 
-	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+	public static void register(
+		CommandDispatcher<ServerCommandSource> dispatcher,
+		HolderLookup.Provider registries
+	) {
+		if (!QuiltLoader.isDevelopmentEnvironment()) return; // Hide commands out of dev environments as its a library not a usable mod.
 		var root = CommandManager.literal("multibossbar")
 			.requires(source -> source.hasPermission(2));
 
 		root.then(CommandManager.literal("create")
 			.then(CommandManager.argument("name", StringArgumentType.word())
-				.then(CommandManager.argument("displayName", StringArgumentType.greedyString())
+				.then(CommandManager.argument("displayName", StringArgumentType.string())
 					.executes(context -> createBossBar(
 						context.getSource(),
 						StringArgumentType.getString(context, "name"),
@@ -36,7 +44,7 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("remove")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.executes(context -> removeBossBar(
 					context.getSource(),
 					StringArgumentType.getString(context, "name")
@@ -49,7 +57,7 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("show")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.executes(context -> showToAll(
 					context.getSource(),
 					StringArgumentType.getString(context, "name")
@@ -58,7 +66,7 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("hide")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.executes(context -> hideFromAll(
 					context.getSource(),
 					StringArgumentType.getString(context, "name")
@@ -67,19 +75,28 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("addbar")
-			.then(CommandManager.argument("name", StringArgumentType.word())
-				.then(CommandManager.argument("barName", StringArgumentType.greedyString())
-					.executes(context -> addBar(
+			.then(existingBarNameArgument()
+				.then(CommandManager.argument("barName", StringArgumentType.string())
+					.executes(context->addBar(
 						context.getSource(),
 						StringArgumentType.getString(context, "name"),
-						StringArgumentType.getString(context, "barName")
+						StringArgumentType.getString(context, "barName"),
+						5
 					))
+					.then(CommandManager.argument("barHeight", IntegerArgumentType.integer(1,10))
+						.executes(context -> addBar(
+							context.getSource(),
+							StringArgumentType.getString(context, "name"),
+							StringArgumentType.getString(context, "barName"),
+							IntegerArgumentType.getInteger(context, "barHeight")
+						))
+					)
 				)
 			)
 		);
 
 		root.then(CommandManager.literal("removebar")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.then(CommandManager.argument("index", IntegerArgumentType.integer(0))
 					.executes(context -> removeBar(
 						context.getSource(),
@@ -91,7 +108,7 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("players")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.then(CommandManager.argument("selector", EntityArgumentType.players())
 					.executes((ctx)->setPlayers(
 						ctx.getSource(),
@@ -103,7 +120,7 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("setpercent")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.then(CommandManager.argument("barIndex", IntegerArgumentType.integer(0))
 					.then(CommandManager.argument("percent", FloatArgumentType.floatArg(0, 100))
 						.executes(context -> setPercent(
@@ -118,9 +135,9 @@ public class MultibossBarCommand {
 		);
 
 		root.then(CommandManager.literal("setcolor")
-			.then(CommandManager.argument("name", StringArgumentType.word())
+			.then(existingBarNameArgument()
 				.then(CommandManager.argument("barIndex", IntegerArgumentType.integer(0))
-					.then(CommandManager.argument("color", StringArgumentType.word())
+					.then(CommandManager.argument("color", StringArgumentType.string())
 						.executes(context -> setColor(
 							context.getSource(),
 							StringArgumentType.getString(context, "name"),
@@ -138,7 +155,25 @@ public class MultibossBarCommand {
 
 		dispatcher.register(root);
 	}
-
+	private static RequiredArgumentBuilder<ServerCommandSource, String> existingBarNameArgument() {
+		return CommandManager.argument("name", StringArgumentType.string())
+			.suggests((context, builder) -> {
+				BARS.keySet().forEach(builder::suggest);
+				return builder.buildFuture();
+			});
+	}
+	private static Text parseTextJson(ServerCommandSource source, String json) {
+		try {
+			Text text = Text.SerializationUtil.fromJson(json, source.getRegistryManager());
+			if (text == null) {
+				source.sendError(Text.literal("Display name JSON must not be null."));
+			}
+			return text;
+		} catch (Exception e) {
+			source.sendError(Text.literal("Invalid display name JSON: " + e.getMessage()));
+			return null;
+		}
+	}
 	private static int createBossBar(ServerCommandSource source, String name, String displayName) {
 		if (BARS.containsKey(name)) {
 			source.sendError(Text.literal("A boss bar named '" + name + "' already exists."));
@@ -147,19 +182,15 @@ public class MultibossBarCommand {
 
 		ServerMultiBossBar bar = new ServerMultiBossBar();
 		bar.setFillType(FillType.VANILLA);
+		Text parsedDisplayName = parseTextJson(source, displayName);
+		if (parsedDisplayName == null) {
+			return 0;
+		}
+		bar.addPlayer( source.getPlayer() );
+		bar.setVisible( true );
 
-		BossBarSection section = new ServerBossBarSection(
-			0,
-			Text.literal(displayName),
-			BossBar.Color.WHITE,
-			BossBar.Style.PROGRESS,
-			SectionType.MULTI,
-			5
-		);
-
-		section.setContainer(bar);
-		bar.addBossBar(section);
 		BARS.put(name, bar);
+		MultibossBarS2CPacket.createBar(bar).send(source.getPlayer());
 
 		source.sendFeedback(() -> Text.literal("Created boss bar '" + name + "'."), false);
 		return 1;
@@ -173,6 +204,8 @@ public class MultibossBarCommand {
 			return 0;
 		}
 
+		ServerMultiBossBar.removeBar(removed);
+
 		source.sendFeedback(() -> Text.literal("Removed boss bar '" + name + "'."), false);
 		return 1;
 	}
@@ -184,6 +217,7 @@ public class MultibossBarCommand {
 		}
 
 		for (Map.Entry<String, ServerMultiBossBar> entry : BARS.entrySet()) {
+			entry.getValue().resync();
 			source.sendFeedback(
 				() -> Text.literal(entry.getKey() + " -> " + entry.getValue().count() + " sections"),
 				false
@@ -202,6 +236,7 @@ public class MultibossBarCommand {
 		}
 
 		bar.setVisible(true);
+		bar.resync();
 		source.sendFeedback(() -> Text.literal("Boss bar '" + name + "' is now visible."), false);
 		return 1;
 	}
@@ -215,11 +250,12 @@ public class MultibossBarCommand {
 		}
 
 		bar.setVisible(false);
+		bar.resync();
 		source.sendFeedback(() -> Text.literal("Boss bar '" + name + "' is now hidden."), false);
 		return 1;
 	}
 
-	private static int addBar(ServerCommandSource source, String name, String barName) {
+	private static int addBar(ServerCommandSource source, String name, String barName, int barHeight) {
 		ServerMultiBossBar bar = BARS.get(name);
 
 		if (bar == null) {
@@ -227,18 +263,23 @@ public class MultibossBarCommand {
 			return 0;
 		}
 
+		Text parsedDisplayName = parseTextJson(source, barName);
+		if (parsedDisplayName == null) {
+			return 0;
+		}
 		BossBarSection section = new ServerBossBarSection(
 			bar.count(),
-			Text.literal(barName),
+			parsedDisplayName,
 			BossBar.Color.WHITE,
 			BossBar.Style.PROGRESS,
 			SectionType.MULTI,
-			5
+			barHeight
 		);
 
 		section.setContainer(bar);
 		bar.addBossBar(section);
 
+		bar.resync();
 		source.sendFeedback(
 			() -> Text.literal("Added bar to '" + name + "' at index " + (bar.count() - 1) + "."),
 			false
@@ -261,6 +302,7 @@ public class MultibossBarCommand {
 		}
 
 		bar.removeBossBar(index);
+		bar.resync();
 		source.sendFeedback(() -> Text.literal("Removed section " + index + " from '" + name + "'."), false);
 		return 1;
 	}
@@ -279,6 +321,7 @@ public class MultibossBarCommand {
 		}
 
 		bar.setPercent(barIndex, percent);
+		bar.resync(barIndex);
 
 		source.sendFeedback(
 			() -> Text.literal("Updated section " + barIndex + " of '" + name + "' to " + percent + "."),
@@ -303,6 +346,7 @@ public class MultibossBarCommand {
 				() -> Text.literal("Showing bar to "+players.size()+" players"),
 				false
 			);
+			bar.resync();
 
 			return 1;
 		} catch (IllegalArgumentException e) {
@@ -334,6 +378,8 @@ public class MultibossBarCommand {
 				false
 			);
 
+			bar.resync(barIndex);
+
 			return 1;
 		} catch (IllegalArgumentException e) {
 			source.sendError(Text.literal("Invalid color: " + color));
@@ -355,4 +401,3 @@ public class MultibossBarCommand {
 		return 1;
 	}
 }
-

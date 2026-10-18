@@ -12,6 +12,7 @@ import net.minecraft.client.gui.hud.boss_bar.*;
 import net.minecraft.entity.boss.BossBar;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -84,33 +85,85 @@ public class BossBarHudMixin {
 			}
 		}
 	}
+
 	@Unique
-	private void mobettes$renderBar(GuiGraphics graphics, int x, int y, ClientMultiBossBar bar) {
+	private void mobettes$renderBar(
+		GuiGraphics graphics,
+		int x,
+		int y,
+		ClientMultiBossBar bar
+	) {
 		List<BossBarSection> bars = new ArrayList<>(bar.getMinibars());
-		var maxMinibars = bars.stream().max(Comparator.comparingInt(BossBarSection::getScaleSupplier));
-		int maxScale = maxMinibars.map(BossBarSection::getScaleSupplier).orElse(5);
+
 		int yOffset = 0;
+
 		for (int index = 0; index < bars.size(); index++) {
-			BossBarSection barInfo = bars.get(index);
-			this.mobettes$renderBar(graphics, x, y + yOffset, barInfo, 182, 0, BACKGROUND_TEXTURES, NOTCHED_BACKGROUND_TEXTURES);
-			int i = (int) (bar.get(index).getPercent() * 183.0F);
-			if (i > 0) {
-				this.mobettes$renderBar(graphics, x, y + yOffset, barInfo, i, maxScale, PROGRESS_TEXTURES, NOTCHED_PROGRESS_TEXTURES);
-			}
-			yOffset += barInfo.getScaleSupplier();
+			BossBarSection section = bars.get(index);
+			int height = section.getScaleSupplier();
+
+			// Draw the background.
+			this.mobettes$renderBar(
+				graphics, x, y + yOffset, section,
+				182, BACKGROUND_TEXTURES, NOTCHED_BACKGROUND_TEXTURES
+			);
+
+			// Draw the progress.
+			float percent = bar.get(index).getPercent();
+			int progressWidth = MathHelper.clamp(
+				(int) (percent * 182.0F),
+				0,
+				182
+			);
+
+//			if (progressWidth > 0) {
+//				this.mobettes$renderBar(
+//					graphics, x, y + yOffset, section,
+//					progressWidth, PROGRESS_TEXTURES,
+//					NOTCHED_PROGRESS_TEXTURES
+//				);
+//			}
+
+			yOffset += height;
 		}
 	}
 
 	@Unique
-	private void mobettes$renderBar(GuiGraphics graphics, int x, int y, BossBarSection bar, int textureWidth, int vOffset, Identifier[] textures, Identifier[] alternativeTextures) {
-		graphics.drawTexture(textures[bar.getColor().ordinal()], x, y, 0, bar.getColor().ordinal() * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
+	private void mobettes$renderBar(
+		GuiGraphics graphics,
+		int x,
+		int y,
+		BossBarSection bar,
+		int width,
+		Identifier[] textures,
+		Identifier[] alternativeTextures
+	) {
+		RenderSystem.enableBlend();
+
+		// These are individual GUI textures, not vertically stacked atlases.
+		graphics.drawGuiTexture(
+			textures[bar.getColor().ordinal()],
+			182, 5,
+			0, 0,
+			x, y,
+			width, bar.getScaleSupplier()
+		);
+
 		if (bar.getStyle() != BossBar.Style.PROGRESS) {
-			RenderSystem.enableBlend();
-			graphics.drawTexture(alternativeTextures[bar.getStyle().ordinal() - 1], x, y, 0, 80 + (bar.getStyle().ordinal() - 1) * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
-			RenderSystem.disableBlend();
+			graphics.drawGuiTexture(
+				alternativeTextures[bar.getStyle().ordinal() - 1],
+				182, 5,
+				0, 0,
+				x, y,
+				width, bar.getScaleSupplier()
+			);
 		}
+
+		RenderSystem.disableBlend();
+
+		// Render the section name.
 		graphics.getMatrices().push();
-		graphics.getMatrices().scale(0.5f, 0.5f, 0.5f);
+		graphics.getMatrices().scale(0.5F, 0.5F, 0.5F);
+
 		graphics.drawShadowedText(
 			this.client.textRenderer,
 			bar.getName(),
@@ -118,6 +171,7 @@ public class BossBarHudMixin {
 			(y + 1) * 2,
 			16777215
 		);
+
 		graphics.getMatrices().pop();
 	}
 

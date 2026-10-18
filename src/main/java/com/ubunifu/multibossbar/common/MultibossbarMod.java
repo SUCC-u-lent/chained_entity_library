@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 public class MultibossbarMod implements ModInitializer {
 	public static final String MOD_ID = "multibossbar";
-	static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	@Override
 	public void onInitialize(ModContainer mod) {
@@ -22,7 +22,7 @@ public class MultibossbarMod implements ModInitializer {
 
 	private static void registerCommands() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-			MultibossBarCommand.register(dispatcher);
+			MultibossBarCommand.register(dispatcher,registryAccess);
 		});
 	}
 }

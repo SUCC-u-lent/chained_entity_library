@@ -41,7 +41,12 @@ public class ServerBossBarSection extends BossBarSection {
 			super.setStyle(style);
 			this.sendPacket(MultibossBarS2CPacket::updateStyle);
 		}
+	}
 
+	@Override
+	public void setScaleSupplier(int scaleSupplier) {
+		super.setScaleSupplier(scaleSupplier);
+		this.sendPacket(p->MultibossBarS2CPacket.setScale(p,scaleSupplier));
 	}
 
 	public BossBarSection setDarkenSky(boolean darkenSky) {

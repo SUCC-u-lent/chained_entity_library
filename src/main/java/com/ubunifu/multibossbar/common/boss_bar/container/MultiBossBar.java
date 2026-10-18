@@ -18,7 +18,7 @@ public class MultiBossBar {
 	private final List<BossBarSection> multiBossBars;
 	private FillType fillType;
 	boolean visible;
-	private MultiBossBar(UUID uuid, List<BossBarSection> bossBarSections, FillType fillType)
+	public MultiBossBar(UUID uuid, List<BossBarSection> bossBarSections, FillType fillType)
 	{
 		this.uuid = uuid;
 		this.multiBossBars = bossBarSections;
@@ -159,8 +159,14 @@ public class MultiBossBar {
 			this.multiBossBars.add(section);
 	}
 
+	public boolean isIndexOccupied(int index) {
+		return index >= 0 && this.multiBossBars.size() < index;
+	}
+
 	public void setBossBar(int index, BossBarSection section) {
-		this.multiBossBars.set(index,section);
+		if (index < this.multiBossBars.size())
+			this.multiBossBars.set(index,section);
+		else throw new NoSuchElementException();
 	}
 
 
