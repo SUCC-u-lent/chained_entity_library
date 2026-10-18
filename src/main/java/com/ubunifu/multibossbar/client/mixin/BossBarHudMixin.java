@@ -1,31 +1,58 @@
 package com.ubunifu.multibossbar.client.mixin;
 
 
-import com.mojang.blaze3d.systems.*;
-import com.ubunifu.multibossbar.client.networking.*;
-import com.ubunifu.multibossbar.common.barhandler.*;
-import net.minecraft.client.*;
-import net.minecraft.client.gui.*;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.ubunifu.multibossbar.client.networking.ClientMultibarReciever;
+import com.ubunifu.multibossbar.common.boss_bar.container.ClientMultiBossBar;
+import com.ubunifu.multibossbar.common.boss_bar.container.MultiBossBar;
+import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.hud.boss_bar.*;
-import net.minecraft.entity.boss.*;
-import net.minecraft.text.*;
-import net.minecraft.util.*;
-import org.spongepowered.asm.mixin.*;
-import org.spongepowered.asm.mixin.injection.*;
-import org.spongepowered.asm.mixin.injection.callback.*;
+import net.minecraft.entity.boss.BossBar;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Mixin(BossBarHud.class)
 public class BossBarHudMixin {
 
 	@Shadow
 	@Final
-	MinecraftClient client;
+	private MinecraftClient client;
 
 	@Shadow
 	@Final
 	Map<UUID, ClientBossBar> bossBars;
+
+	@Shadow
+	@Final
+	private static Identifier[] BACKGROUND_TEXTURES;
+
+	@Shadow
+	@Final
+	private static Identifier[] NOTCHED_BACKGROUND_TEXTURES;
+
+	@Shadow
+	@Final
+	private static Identifier[] PROGRESS_TEXTURES;
+
+	@Shadow
+	@Final
+	private static Identifier[] NOTCHED_PROGRESS_TEXTURES;
 
 	@Inject(method = "render",at=@At("HEAD"))
 	private void renderMixin(GuiGraphics graphics, CallbackInfo ci)
@@ -47,7 +74,7 @@ public class BossBarHudMixin {
 			int o = j - 9;
 			graphics.drawShadowedText(this.client.textRenderer, text, n, o, 16777215);
 			int totalHeight = 0;
-			for (Minibar minibar : multiBossBar.getMinibars()) {
+			for (BossBarSection minibar : multiBossBar.getMinibars()) {
 				totalHeight += minibar.getScaleSupplier();
 			}
 
@@ -59,34 +86,34 @@ public class BossBarHudMixin {
 	}
 	@Unique
 	private void mobettes$renderBar(GuiGraphics graphics, int x, int y, ClientMultiBossBar bar) {
-		List<Minibar> bars = new ArrayList<>(bar.getMinibars());
-		var maxMinibars = bar.getMinibars().stream().max(Comparator.comparing(Minibar::getScaleSupplier));
-		int maxScale = maxMinibars.map(Minibar::getScaleSupplier).orElse(5);
+		List<BossBarSection> bars = new ArrayList<>(bar.getMinibars());
+		var maxMinibars = bars.stream().max(Comparator.comparingInt(BossBarSection::getScaleSupplier));
+		int maxScale = maxMinibars.map(BossBarSection::getScaleSupplier).orElse(5);
 		int yOffset = 0;
 		for (int index = 0; index < bars.size(); index++) {
-			Minibar barInfo = bars.get(index);
-			this.mobettes$renderBar(graphics, x, y+yOffset, barInfo, 182, 0);
-			int i = (int)(bar.get(index).getPercent() * 183.0F);
+			BossBarSection barInfo = bars.get(index);
+			this.mobettes$renderBar(graphics, x, y + yOffset, barInfo, 182, 0, BACKGROUND_TEXTURES, NOTCHED_BACKGROUND_TEXTURES);
+			int i = (int) (bar.get(index).getPercent() * 183.0F);
 			if (i > 0) {
-				this.mobettes$renderBar(graphics, x, y+yOffset, barInfo, i, maxScale);
+				this.mobettes$renderBar(graphics, x, y + yOffset, barInfo, i, maxScale, PROGRESS_TEXTURES, NOTCHED_PROGRESS_TEXTURES);
 			}
 			yOffset += barInfo.getScaleSupplier();
 		}
 	}
 
 	@Unique
-	private void mobettes$renderBar(GuiGraphics graphics, int x, int y, Minibar bar, int textureWidth, int vOffset) {
-		graphics.drawTexture(BARS_TEXTURE, x, y, 0, bar.getColor().ordinal() * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
+	private void mobettes$renderBar(GuiGraphics graphics, int x, int y, BossBarSection bar, int textureWidth, int vOffset, Identifier[] textures, Identifier[] alternativeTextures) {
+		graphics.drawTexture(textures[bar.getColor().ordinal()], x, y, 0, bar.getColor().ordinal() * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
 		if (bar.getStyle() != BossBar.Style.PROGRESS) {
 			RenderSystem.enableBlend();
-			graphics.drawTexture(BARS_TEXTURE, x, y, 0, 80 + (bar.getStyle().ordinal() - 1) * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
+			graphics.drawTexture(alternativeTextures[bar.getStyle().ordinal() - 1], x, y, 0, 80 + (bar.getStyle().ordinal() - 1) * 5 * 2 + vOffset, textureWidth, bar.getScaleSupplier());
 			RenderSystem.disableBlend();
 		}
 		graphics.getMatrices().push();
-		graphics.getMatrices().scale(0.5f,0.5f,0.5f);
+		graphics.getMatrices().scale(0.5f, 0.5f, 0.5f);
 		graphics.drawShadowedText(
 			this.client.textRenderer,
-			bar.getDisplayText(),
+			bar.getName(),
 			(x + 5) * 2,
 			(y + 1) * 2,
 			16777215

@@ -1,0 +1,16 @@
+package com.ubunifu.multibossbar.common.boss_bar;
+
+public enum PacketType {
+	REMOVE_BAR,
+	ADD_BAR,
+	UPDATE_NAME,
+	UPDATE_STYLE,
+	UPDATE_PROGRESS,
+	UPDATE_COLOR,
+	UPDATE_DARKEN_SKY,
+	UPDATE_DRAGON_MUSIC,
+	UPDATE_THICKEN_FOG,
+	CLEAR_BARS,
+	SEND_ALL_BARS,
+	UPDATE_VISIBILITY
+}
