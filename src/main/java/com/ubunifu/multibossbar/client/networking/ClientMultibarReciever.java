@@ -34,7 +34,7 @@ public class ClientMultibarReciever {
 		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
 		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
 		if (bossBar == null) {
-			if (packetType != PacketType.CREATE_BAR) return;
+			if (!(packetType == PacketType.CREATE_BAR || packetType == PacketType.SEND_ALL_BARS)) return;
 			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
 			multiBossBars.add(bossBar);
 		}
@@ -46,7 +46,7 @@ public class ClientMultibarReciever {
 		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
 		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
 		if (bossBar == null) {
-			if (packetType != PacketType.CREATE_BAR) return;
+			if (!(packetType == PacketType.CREATE_BAR || packetType == PacketType.SEND_ALL_BARS)) return;
 			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
 			multiBossBars.add(bossBar);
 		}
@@ -55,7 +55,6 @@ public class ClientMultibarReciever {
 	}
 	private static void processBody(PacketType packetType, ClientMultiBossBar bossBar, @Nullable ClientBossBarSection section, PacketByteBuf packetByteBuf) {
 		// Upon entering this the packet buffer has already consumed all the "headers" meaning all thats left is the true "payload" part.
-		MultibossbarMod.LOGGER.info("Received {} packet", packetType.name());
 		// Everything after this changes based on the above packet type.
 		switch (packetType){
 			case UPDATE_NAME -> {
@@ -72,7 +71,7 @@ public class ClientMultibarReciever {
 				bossBar.replaceBar(section);
 				replaceBar(bossBar);
 			}
-			case UPDATE_PROGRESS -> {
+			case UPDATE_PERCENT -> {
 				float progress = packetByteBuf.readFloat();
 				Objects.requireNonNull(section);
 				section.setPercent( progress );
@@ -122,24 +121,36 @@ public class ClientMultibarReciever {
 			case CLEAR_BARS -> removeBar(bossBar);
 			case ADD_BAR -> {
 				int index = packetByteBuf.readInt();
-				BossBarSection section1 = BossBarSection.deserializeFromBuf(packetByteBuf);
+				ClientBossBarSection section1 = BossBarSection.client_deserializeFromBuf(packetByteBuf);
 				if (bossBar.isIndexOccupied(index))
 					bossBar.setBossBar(index,section1);
 				else bossBar.addBossBar(section1);
 				replaceBar(bossBar);
 			}
-			case SEND_ALL_BARS -> {
-				bossBar.clearBars();
-				int barCount = packetByteBuf.readInt();
-				for (int i = 0; i < barCount; i++) {
-					BossBarSection section1 = BossBarSection.deserializeFromBuf(packetByteBuf);
-					bossBar.addBossBar(section1);
-				}
-				replaceBar(bossBar);
+			case SEND_ALL_BARS, RESYNC -> {
+				ClientMultiBossBar bar = ClientMultiBossBar.client_deserializeFromBuffer(packetByteBuf);
+				if (bar.getUuid() != bossBar.getUuid())
+				{
+					removeBar(bossBar);
+					multiBossBars.add(bar);
+				} else replaceBar(bar);
 			}
 			case UPDATE_VISIBILITY -> {
 				boolean visibility = packetByteBuf.readBoolean();
 				bossBar.setVisible(visibility);
+				replaceBar(bossBar);
+			}
+			case CREATE_BAR -> {} // This doesn't need anything done.
+			case UPDATE_SECTION_TYPE -> {
+				SectionType type = packetByteBuf.readEnumConstant(SectionType.class);
+				Objects.requireNonNull(section);
+				section.setSectionType( type );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_CONTAINER_NAME -> {
+				Text text = TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode( packetByteBuf );
+				bossBar.setDisplayName( text );
 				replaceBar(bossBar);
 			}
 		}

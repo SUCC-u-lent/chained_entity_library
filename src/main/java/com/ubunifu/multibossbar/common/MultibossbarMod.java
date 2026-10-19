@@ -14,9 +14,7 @@ public class MultibossbarMod implements ModInitializer {
 
 	@Override
 	public void onInitialize(ModContainer mod) {
-		LOGGER.info("Registering MultiBossBar S2C payload...");
 		ModNetworking.registerS2CPackets();
-		LOGGER.info("Registered MultiBossBar S2C payload.");
 		registerCommands();
 	}
 

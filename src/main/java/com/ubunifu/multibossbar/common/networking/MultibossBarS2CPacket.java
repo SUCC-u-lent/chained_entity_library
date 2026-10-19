@@ -6,12 +6,9 @@ import com.ubunifu.multibossbar.common.boss_bar.container.*;
 import com.ubunifu.multibossbar.common.boss_bar.sections.ServerBossBarSection;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
 import net.fabricmc.fabric.api.networking.v1.*;
-import net.minecraft.client.util.ColorUtil;
-import net.minecraft.entity.boss.BossBar;
 import net.minecraft.network.*;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.payload.*;
-import net.minecraft.network.packet.s2c.play.BossBarUpdateS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.*;
 import net.minecraft.util.*;
@@ -52,18 +49,27 @@ public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements Cust
 
 	public static MultibossBarS2CPacket updateProgress(ServerBossBarSection serverBossBarSection) {
 		Builder builder = new Builder(serverBossBarSection);
-		builder.setPacketType( PacketType.UPDATE_PROGRESS );
+		builder.setPacketType( PacketType.UPDATE_PERCENT);
 		builder.setRemainingConsumer((p)->p.writeFloat(serverBossBarSection.percent));
 		return builder.build();
 	}
 	public static MultibossBarS2CPacket sendBars(ServerMultiBossBar serverMultiBossBar) {
 		Builder builder = new Builder( serverMultiBossBar );
 		builder.setPacketType( PacketType.SEND_ALL_BARS );
-		builder.setRemainingConsumer((p)->{
-			p.writeInt( serverMultiBossBar.count() );
-			for (BossBarSection bar : serverMultiBossBar.getBossBars())
-				bar.serializeToBuf( p );
-		});
+		builder.setRemainingConsumer(serverMultiBossBar::writeToBuffer);
+		return builder.build();
+	}
+
+	public static MultibossBarS2CPacket updateContainerName(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.UPDATE_CONTAINER_NAME );
+		builder.setRemainingConsumer( p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(p,serverMultiBossBar.getDisplayName()) );
+		return builder.build();
+	}
+	public static MultibossBarS2CPacket resync(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.RESYNC );
+		builder.setRemainingConsumer(serverMultiBossBar::writeToBuffer);
 		return builder.build();
 	}
 
@@ -96,10 +102,10 @@ public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements Cust
 		return builder.build();
 	}
 
-	public static MultibossBarS2CPacket setScale(ServerBossBarSection serverBossBarSection, int scaleSupplier) {
+	public static MultibossBarS2CPacket setScale(ServerBossBarSection serverBossBarSection) {
 		Builder builder = new Builder( serverBossBarSection );
 		builder.setPacketType( PacketType.SET_BAR_SCALE );
-		builder.setRemainingConsumer(p->p.writeInt(scaleSupplier));
+		builder.setRemainingConsumer(p->p.writeInt(serverBossBarSection.getScaleSupplier()));
 		return builder.build();
 	}
 
@@ -126,13 +132,19 @@ public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements Cust
 	public static MultibossBarS2CPacket createBar(ServerMultiBossBar serverBossBar) {
 		Builder builder = new Builder( serverBossBar );
 		builder.setPacketType( PacketType.CREATE_BAR );
-		builder.setRemainingConsumer(p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode( p, serverBossBar.getDisplayName() ));
 		return builder.build();
 	}
 
 	public static MultibossBarS2CPacket removeBar(ServerBossBarSection serverMultiBossBar) {
 		Builder builder = new Builder(serverMultiBossBar);
 		builder.setPacketType(PacketType.REMOVE_BAR);
+		return builder.build();
+	}
+
+	public static MultibossBarS2CPacket updateSectionType(ServerBossBarSection section) {
+		Builder builder = new Builder(section);
+		builder.setPacketType(PacketType.UPDATE_SECTION_TYPE);
+		builder.setRemainingConsumer(p->p.writeEnumConstant(section.getSectionType()));
 		return builder.build();
 	}
 

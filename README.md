@@ -1,29 +1,142 @@
-# Quilt Template Mod
+# Multiboss Bar Mod
 
-The official Quilt template mod. You can use it as a template for your own mods!
+A quilt mod that allows compacting multiple boss bars into one!
+
+Want a boss with multiple parts you have to destroy first? This mod has you covered... for showing the health at least.
 
 ## Usage
 
-In order to use this mod as a template:
+MultiBossBar is intended to be used as a dependency by other mods. It provides a Java API for creating and managing boss bars composed of multiple individual bars.
 
-1. Create a new repository from this template with `Use this template`
-2. Clone the recently-created repo on your PC
-3. Make the necessary changes in order to make it yours:
-    - Update `gradle.properties` in order to use your Maven group and mod ID
-        - If you don't know which Maven group to use, and you are planning to host the mod's source code on GitHub, use `io.github.<Your_Username_Here>`
-    - Update `quilt.mod.json` in order to reflect your mod's metadata
-        - If you are planning to include (jar-in-jar) a mod, don't forget to declare its dependency on it!
-        - The icon provided here is a placeholder one. If you aren't able to replace it yet, you can delete it and remove the "icon" property
-    - Create a LICENSE file for this mod! If you don't know which license to use, check out [here](https://choosealicense.com/).
-        - If you use `LICENSE.md`, don't forget to update the buildscript in order to use that file name!
-        - In `quilt.mod.json`, don't forget to put the license's [SPDX identifier](https://spdx.org/licenses/) under the `"license"` property in `"metadata"`.
-        - The GPLv3 and AGPLv3 are not valid mod licenses, so you can use almost any license except for those.
-    - Update the Java sub-directory structure so it reflects your Maven group
-    - If the dependencies in `gradle/libs.versions.toml` aren't up-to-date, feel free to update them! The [linked utility](https://lambdaurora.dev/tools/import_quilt.html) should help you in this easy and quick process.
-4. The mod is now ready to be worked on!
+### Adding the dependency
+
+Add the Modrinth Maven repository and MultiBossBar dependency to your `build.gradle`:
+
+```gradle
+repositories {
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+}
+
+dependencies {
+    modImplementation "maven.modrinth:multi-boss-bar:<version>"
+}
+```
+
+Replace `<version>` with the version you want to use.
+
+### Creating a MultiBossBar
+
+Create a `ServerMultiBossBar`, configure its display name, and add individual bars using `Minibar.of(...)`.
+
+```java
+import com.ubunifu.multibossbar.common.barhandler.Minibar;
+import com.ubunifu.multibossbar.common.barhandler.ServerMultiBossBar;
+import net.minecraft.entity.boss.BossBar;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+
+// Create a multi-bar boss bar.
+ServerMultiBossBar multiBossBar = new ServerMultiBossBar();
+
+// Set the display name for the multi-bar.
+multiBossBar.setText(Text.literal("Dragon Encounter"));
+
+// Add an individual bar.
+multiBossBar.addBossBar(Minibar.of(
+    Text.literal("Dragon Health"),
+    BossBar.Color.RED,
+    BossBar.Style.PROGRESS,
+    false, // Darken sky
+    false, // Play dragon music
+    false, // Thicken fog
+    1.0f,  // Progress: 0.0 = empty, 1.0 = full
+    5      // Bar height
+));
+
+// Enable updates and display the bar to a player.
+multiBossBar.setVisible(true);
+multiBossBar.addPlayer(player);
+```
+
+Here, `player` is a `ServerPlayerEntity` representing the player who should see the bar.
+
+### Updating a bar
+
+Individual bars can be updated by their zero-based index. These methods send the appropriate updates to players currently viewing the `ServerMultiBossBar`.
+
+```java
+// Update the first bar's progress to 50%.
+multiBossBar.setPercent(0, 0.5f);
+
+// Change its color.
+multiBossBar.setColor(0, BossBar.Color.GREEN);
+
+// Change its display name.
+multiBossBar.setDisplayName(0, Text.literal("Remaining Health"));
+
+// Change its style.
+multiBossBar.setStyle(0, BossBar.Style.PROGRESS);
+```
+
+The progress value is clamped to the range `0.0f`–`1.0f`. The index refers to the order in which bars were added, starting at `0`.
+
+You can also add an existing vanilla `BossBar`:
+
+```java
+multiBossBar.addBossBar(bossBar);
+```
+
+This converts the supplied boss bar into a `BossBarSection` using its current properties. Subsequent changes to the original `BossBar` are not automatically reflected; use the `ServerMultiBossBar` setters to update the added bar.
+
+### Managing visibility
+
+A `ServerMultiBossBar` can be shown to individual players or hidden from them at any time.
+
+```java
+// Show the bar to a player.
+multiBossBar.addPlayer(player);
+
+// Hide the bar from that player.
+multiBossBar.removePlayer(player);
+```
+
+To manage multiple viewers, call `addPlayer` or `removePlayer` for each `ServerPlayerEntity` as appropriate.
+
+The `setVisible(boolean)` method controls whether the multi-bar sends update packets. It does not itself add or remove viewers. Use `addPlayer` and `removePlayer` to control who sees the bar.
+
+### Removing bars
+
+Remove an individual bar by its zero-based index:
+
+```java
+multiBossBar.removeBossBar(0);
+```
+
+To remove all individual bars:
+
+```java
+multiBossBar.clear();
+```
+
+### Commands
+
+MultiBossBar includes commands intended for development and testing. These commands are only included in development environments and are **not available as in-game commands in normal releases**.
 
 ## License
 
-This template on the QuiltMC GitHub is licensed under the [Creative Common Zero v1.0 license](./LICENSE-TEMPLATE.md).
+This mod is licensed under the [GNU Lesser General Public License](./LICENSE-TEMPLATE.md).
 
-Mods created with this template are not automatically licensed under the CC0, and are not required to give any kind of credit back to QuiltMC for this template.
+The License terms dictate:
+### You may:
+- Distribute
+- Use
+- Copy
+- Use another license on projects/libraries/mods that use this mod as a dependency
+
+### You must not:
+- Modify
+- Distribute without crediting the original author.
+- Use any other license than the GNU Lesser General Public Licence on distributions.

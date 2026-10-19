@@ -2,10 +2,12 @@ package com.ubunifu.multibossbar.common.boss_bar.sections.framework;
 
 import com.ubunifu.multibossbar.common.boss_bar.*;
 import com.ubunifu.multibossbar.common.boss_bar.container.MultiBossBar;
+import com.ubunifu.multibossbar.common.boss_bar.sections.ClientBossBarSection;
 import net.minecraft.entity.boss.BossBar;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.*;
+import net.minecraft.util.math.MathHelper;
 
 import java.util.*;
 
@@ -41,7 +43,7 @@ public class BossBarSection
 		buf.writeBoolean(thickenFog);
 		buf.writeInt(scaleSupplier);
 	}
-	public static BossBarSection deserializeFromBuf(PacketByteBuf buf)
+	public static ClientBossBarSection client_deserializeFromBuf(PacketByteBuf buf)
 	{
 		UUID uuid = buf.readUuid();
 		int index = buf.readInt();
@@ -54,10 +56,10 @@ public class BossBarSection
 		boolean dragonMusic = buf.readBoolean();
 		boolean thickenFog = buf.readBoolean();
 		int scaleSupplier = buf.readInt();
-		return new BossBarSection( index, uuid, text, percent, color, style, sectionType, darkenSky, dragonMusic, thickenFog, scaleSupplier );
+		return new ClientBossBarSection( index, uuid, text, percent, color, style, sectionType, darkenSky, dragonMusic, thickenFog, scaleSupplier );
 	}
 
-	private BossBarSection(int index,
+	protected BossBarSection(int index,
 						   UUID uuid,
 	                       Text name,
 	                       float percent,
@@ -74,7 +76,7 @@ public class BossBarSection
 		this.color = color;
 		this.style = style;
 		this.sectionType = sectionType;
-		this.scaleSupplier = scaleSupplier;
+		this.scaleSupplier = MathHelper.clamp(scaleSupplier,5,20);
 		this.percent = percent;
 		this.darkenSky = darkenSky;
 		this.dragonMusic = dragonMusic;

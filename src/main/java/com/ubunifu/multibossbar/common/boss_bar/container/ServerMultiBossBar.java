@@ -1,12 +1,15 @@
 package com.ubunifu.multibossbar.common.boss_bar.container;
 
 import com.google.common.collect.Sets;
-import com.ubunifu.multibossbar.common.boss_bar.FillType;
+import com.ubunifu.multibossbar.common.boss_bar.*;
 import com.ubunifu.multibossbar.common.boss_bar.sections.ServerBossBarSection;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
 import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import org.apache.commons.lang3.NotImplementedException;
 
+import java.io.NotSerializableException;
 import java.util.*;
 import java.util.function.Function;
 
@@ -26,10 +29,8 @@ public class ServerMultiBossBar extends MultiBossBar {
 
 	public static void removeBar(ServerMultiBossBar bar) {
 		Set<ServerPlayerEntity> playerEntities = Set.copyOf( bar.players );
-		for (ServerPlayerEntity plr : playerEntities) bar.sendPacket(
-			MultibossBarS2CPacket.clearBars(bar),
-			plr
-		);
+		for (ServerPlayerEntity plr : playerEntities)
+			bar.clearBars(plr);
 	}
 
 	public Set<ServerPlayerEntity> getPlayers() { return Set.copyOf( players ); }
@@ -40,58 +41,74 @@ public class ServerMultiBossBar extends MultiBossBar {
 		players.forEach(this::sendBars);
 		previousPlayerList.removeIf(p->players.stream().anyMatch(r->p.getUuid().equals(r.getUuid())));
 		for (ServerPlayerEntity plr : previousPlayerList)
-			sendPacket(MultibossBarS2CPacket::clearBars,plr);
+			clearBars(plr);
 	}
 	public void resync()
 	{
 		for (ServerPlayerEntity player : this.players)
-			sendPacket(MultibossBarS2CPacket::sendBars,player);
-	}
-	public void resync(int index)
-	{
-		BossBarSection section = this.get(index);
-		if (section == null) return;
-		for (ServerPlayerEntity player : this.players)
-			sendPacket(MultibossBarS2CPacket.addBar((ServerBossBarSection) section),player);
+			sendBars(player);
 	}
 	public void removePlayer(ServerPlayerEntity player) {
 		if (this.players.removeIf(p->p.getUuid().equals(player.getUuid())))
-		{
-			sendPacket(MultibossBarS2CPacket::clearBars, player);
-		}
+			clearBars(player);
 	}
 	public void addPlayer(ServerPlayerEntity player) {
 		if (this.players.stream().anyMatch(p->p.getUuid().equals(player.getUuid()))) return;
 		this.players.add(player);
-		sendPacket(MultibossBarS2CPacket::sendBars,player);
+		sendBars(player);
+	}
+
+	@Override
+	public void setDisplayName(Text text) {
+		super.setDisplayName(text);
+		onUpdate(PacketType.UPDATE_CONTAINER_NAME,null);
 	}
 
 	@Override
 	public void setVisible(boolean visible) {
 		super.setVisible(visible);
-		sendPacket(p->MultibossBarS2CPacket.setVisible(p,visible));
-	}
-
-	public void sendPacket(MultibossBarS2CPacket multibossBarS2CPacket, ServerPlayerEntity player) {
-		multibossBarS2CPacket.send( player );
-	}
-
-	private void sendPacket(Function<ServerMultiBossBar, MultibossBarS2CPacket> bossBarToPacketFunction, ServerPlayerEntity player) {
-		MultibossBarS2CPacket packet = bossBarToPacketFunction.apply( this );
-		packet.send( player );
-	}
-	private void sendPacket(Function<ServerMultiBossBar, MultibossBarS2CPacket> bossBarToPacketFunction) {
-		Set<ServerPlayerEntity> serverPlayerEntities = this.getPlayers();
-		serverPlayerEntities.forEach(s->sendPacket(bossBarToPacketFunction, s));
+		onUpdate(PacketType.UPDATE_VISIBILITY,null, visible);
 	}
 
 	public void sendBars(ServerPlayerEntity player){
-		MultibossBarS2CPacket packet = MultibossBarS2CPacket.sendBars(this);
-		packet.send(player);
+		onUpdate(PacketType.SEND_ALL_BARS, player);
 	}
 
 	public void clearBars(ServerPlayerEntity player){
-		MultibossBarS2CPacket packet = MultibossBarS2CPacket.clearBars(this);
-		packet.send(player);
+		onUpdate(PacketType.CLEAR_BARS, player);
+	}
+
+	public void onBarUpdate(PacketType type, ServerBossBarSection section) {
+		if (!type.isBarUpdate()) throw new IllegalStateException("Attempt to update bar using type: "+type.name()+" via 'onBarUpdate'. Use 'onUpdate' for this PacketType");
+		MultibossBarS2CPacket packet = switch (type) {
+			case REMOVE_BAR -> MultibossBarS2CPacket.removeBar(section);
+			case ADD_BAR -> MultibossBarS2CPacket.addBar(section);
+			case UPDATE_NAME -> MultibossBarS2CPacket.updateName(section);
+			case UPDATE_STYLE -> MultibossBarS2CPacket.updateStyle(section);
+			case UPDATE_PERCENT -> MultibossBarS2CPacket.updateProgress(section);
+			case UPDATE_COLOR -> MultibossBarS2CPacket.updateColor(section);
+			case UPDATE_DARKEN_SKY -> MultibossBarS2CPacket.updateDarkenSky(section);
+			case UPDATE_DRAGON_MUSIC -> MultibossBarS2CPacket.updateDragonMusic(section);
+			case UPDATE_THICKEN_FOG -> MultibossBarS2CPacket.updateThickenFog(section);
+			case SET_BAR_SCALE -> MultibossBarS2CPacket.setScale(section);
+			case UPDATE_SECTION_TYPE -> MultibossBarS2CPacket.updateSectionType(section);
+			default -> throw new NotImplementedException();
+		};
+		this.players.forEach(packet::send);
+	}
+	public void onUpdate(PacketType type, ServerPlayerEntity player, Object... args)
+	{
+		if (type.isBarUpdate()) throw new IllegalStateException("Attempt to update bar using type: "+type.name()+" via 'onUpdate'. Use 'onBarUpdate' for this PacketType");
+		MultibossBarS2CPacket packet = switch (type) {
+			case CREATE_BAR -> MultibossBarS2CPacket.createBar(this);
+			case CLEAR_BARS -> MultibossBarS2CPacket.clearBars(this);
+			case SEND_ALL_BARS -> MultibossBarS2CPacket.sendBars(this);
+			case UPDATE_VISIBILITY -> MultibossBarS2CPacket.setVisible(this, (boolean)args[0]);
+			case RESYNC -> MultibossBarS2CPacket.resync(this);
+			case UPDATE_CONTAINER_NAME -> MultibossBarS2CPacket.updateContainerName(this);
+			default -> throw new NotImplementedException();
+		};
+		if (player != null) packet.send(player);
+		else this.players.forEach(packet::send);
 	}
 }

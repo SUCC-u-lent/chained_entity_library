@@ -1,37 +1,38 @@
 package com.ubunifu.multibossbar.common.boss_bar.sections;
 
 import com.google.common.base.Objects;
-import com.google.common.collect.*;
-import com.ubunifu.multibossbar.common.boss_bar.SectionType;
-import com.ubunifu.multibossbar.common.boss_bar.container.ServerMultiBossBar;
+import com.ubunifu.multibossbar.common.boss_bar.*;
+import com.ubunifu.multibossbar.common.boss_bar.container.*;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
-import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
 import net.minecraft.entity.boss.*;
-import net.minecraft.network.packet.s2c.play.BossBarUpdateS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 
 import java.util.*;
-import java.util.function.Function;
 
 public class ServerBossBarSection extends BossBarSection {
 	public ServerBossBarSection(int index, Text displayName, BossBar.Color color, BossBar.Style style, SectionType sectionType, int scaleSupplier) {
 		super(index, MathHelper.randomUuid(), displayName, color, style, sectionType, scaleSupplier);
 	}
 
+	private void issueUpdate(PacketType type)
+	{
+		ServerMultiBossBar container = (ServerMultiBossBar) this.getContainer();
+		container.onBarUpdate(type, this);
+	}
+
 	public void setPercent(float percentage) {
 		if (percentage != this.percent) {
 			super.setPercent(percentage);
-			this.sendPacket(MultibossBarS2CPacket::updateProgress);
+			issueUpdate(PacketType.UPDATE_PERCENT);
 		}
-
 	}
 
 	public void setColor(BossBar.Color color) {
 		if (color != this.color) {
 			super.setColor(color);
-			this.sendPacket(MultibossBarS2CPacket::updateColor);
+			issueUpdate(PacketType.UPDATE_COLOR);
 		}
 
 	}
@@ -39,20 +40,24 @@ public class ServerBossBarSection extends BossBarSection {
 	public void setStyle(BossBar.Style style) {
 		if (style != this.style) {
 			super.setStyle(style);
-			this.sendPacket(MultibossBarS2CPacket::updateStyle);
+			issueUpdate(PacketType.UPDATE_STYLE);
 		}
 	}
 
 	@Override
 	public void setScaleSupplier(int scaleSupplier) {
+		int previousScale = this.getScaleSupplier();
 		super.setScaleSupplier(scaleSupplier);
-		this.sendPacket(p->MultibossBarS2CPacket.setScale(p,scaleSupplier));
+		if (previousScale != scaleSupplier)
+		{
+			issueUpdate(PacketType.SET_BAR_SCALE);
+		}
 	}
 
 	public BossBarSection setDarkenSky(boolean darkenSky) {
 		if (darkenSky != this.darkenSky) {
 			super.setDarkenSky(darkenSky);
-			this.sendPacket(MultibossBarS2CPacket::updateDarkenSky);
+			issueUpdate(PacketType.UPDATE_DARKEN_SKY);
 		}
 
 		return this;
@@ -61,7 +66,7 @@ public class ServerBossBarSection extends BossBarSection {
 	public BossBarSection setDragonMusic(boolean dragonMusic) {
 		if (dragonMusic != this.dragonMusic) {
 			super.setDragonMusic(dragonMusic);
-			this.sendPacket(MultibossBarS2CPacket::updateDragonMusic);
+			issueUpdate(PacketType.UPDATE_DRAGON_MUSIC);
 		}
 
 		return this;
@@ -70,7 +75,7 @@ public class ServerBossBarSection extends BossBarSection {
 	public BossBarSection setThickenFog(boolean thickenFog) {
 		if (thickenFog != this.thickenFog) {
 			super.setThickenFog(thickenFog);
-			this.sendPacket(MultibossBarS2CPacket::updateThickenFog);
+			issueUpdate(PacketType.UPDATE_THICKEN_FOG);
 		}
 
 		return this;
@@ -79,17 +84,16 @@ public class ServerBossBarSection extends BossBarSection {
 	public void setName(Text name) {
 		if (!Objects.equal(name, this.name)) {
 			super.setName(name);
-			this.sendPacket(MultibossBarS2CPacket::updateName);
+			issueUpdate(PacketType.UPDATE_NAME);
 		}
-
 	}
 
-	private void sendPacket(Function<ServerBossBarSection, MultibossBarS2CPacket> bossBarToPacketFunction, ServerPlayerEntity player) {
-		((ServerMultiBossBar)this.getContainer()).sendPacket( bossBarToPacketFunction.apply(this), player );
-	}
-	private void sendPacket(Function<ServerBossBarSection, MultibossBarS2CPacket> bossBarToPacketFunction) {
-		Set<ServerPlayerEntity> serverPlayerEntities = this.getPlayers();
-		serverPlayerEntities.forEach(s->sendPacket(bossBarToPacketFunction, s));
+	@Override
+	public void setSectionType(SectionType sectionType) {
+		SectionType type = this.getSectionType();
+		super.setSectionType(sectionType);
+		if (type != sectionType)
+			issueUpdate(PacketType.UPDATE_SECTION_TYPE);
 	}
 
 	private Set<ServerPlayerEntity> getPlayers() {

@@ -5,9 +5,9 @@ import com.ubunifu.multibossbar.common.boss_bar.sections.*;
 import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
 import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
 import net.minecraft.entity.boss.BossBar;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.text.Text;
+import net.minecraft.text.*;
 import org.jetbrains.annotations.*;
 
 import java.util.*;
@@ -15,14 +15,44 @@ import java.util.function.Function;
 
 public class MultiBossBar {
 	UUID uuid;
+	Text name;
 	private final List<BossBarSection> multiBossBars;
 	private FillType fillType;
 	boolean visible;
+
+	public void writeToBuffer(PacketByteBuf p) {
+		p.writeUuid(uuid);
+		TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(p, name);
+		p.writeInt(multiBossBars.size());
+		for (BossBarSection bar : multiBossBars)
+			bar.serializeToBuf(p);
+		p.writeEnumConstant(fillType);
+		p.writeBoolean(visible);
+	}
+	public static ClientMultiBossBar client_deserializeFromBuffer(PacketByteBuf p) {
+		UUID uuid = p.readUuid();
+		Text name = TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode(p);
+		int listSize = p.readInt();
+		List<BossBarSection> sections = new ArrayList<>(listSize);
+		for (int i = 0; i < listSize; i++) {
+			BossBarSection section = BossBarSection.client_deserializeFromBuf(p);
+			sections.add(section);
+		}
+		FillType fillType = p.readEnumConstant(FillType.class);
+		boolean visible = p.readBoolean();
+		return new ClientMultiBossBar(uuid,name,sections,fillType,visible);
+	}
+
+	protected MultiBossBar(UUID uuid, Text name, List<BossBarSection> sections, FillType fillType, boolean visible) {
+		this.uuid = uuid;
+		this.name = name;
+		this.multiBossBars = sections;
+		this.fillType = fillType;
+		this.visible = visible;
+	}
 	public MultiBossBar(UUID uuid, List<BossBarSection> bossBarSections, FillType fillType)
 	{
-		this.uuid = uuid;
-		this.multiBossBars = bossBarSections;
-		this.fillType = fillType;
+		this(uuid, Text.empty(), bossBarSections, fillType, false);
 	}
 	public MultiBossBar(List<BossBarSection> bossBarSections, FillType fillType)
 	{
@@ -42,10 +72,11 @@ public class MultiBossBar {
 	}
 
 	public Text getDisplayName() {
-		if (this.multiBossBars.isEmpty()) {
-			return Text.empty();
-		}
-		return this.multiBossBars.get(0).getName();
+		return this.name;
+	}
+
+	public void setDisplayName(Text text) {
+		this.name = text;
 	}
 
 	public BossBarSection get(int index) {
