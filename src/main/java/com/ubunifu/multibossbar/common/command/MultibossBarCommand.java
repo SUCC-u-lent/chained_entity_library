@@ -1,266 +1,732 @@
 package com.ubunifu.multibossbar.common.command;
 
-import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.FloatArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import com.ubunifu.multibossbar.common.barhandler.MultiBossBar;
-import com.ubunifu.multibossbar.common.barhandler.MultiBossBarManager;
-import com.ubunifu.multibossbar.common.barhandler.ServerMultiBossBar;
+import com.mojang.brigadier.*;
+import com.mojang.brigadier.arguments.*;
+import com.mojang.brigadier.builder.*;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.*;
+import com.mojang.brigadier.suggestion.*;
+import com.ubunifu.multibossbar.common.MultibossbarMod;
+import com.ubunifu.multibossbar.common.boss_bar.FillType;
+import com.ubunifu.multibossbar.common.boss_bar.SectionType;
+import com.ubunifu.multibossbar.common.boss_bar.container.ServerMultiBossBar;
+import com.ubunifu.multibossbar.common.boss_bar.sections.ServerBossBarSection;
+import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
+import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
+import net.minecraft.command.CommandSource;
+import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.entity.boss.BossBar;
-import net.minecraft.entity.boss.ServerBossBar;
+import net.minecraft.registry.HolderLookup;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import org.quiltmc.loader.api.QuiltLoader;
 
-public class MultibossBarCommand {
-	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
-		dispatcher.register(
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+
+public final class MultibossBarCommand {
+	private static final Map<String, ServerMultiBossBar> BARS = new HashMap<>();
+
+	private MultibossBarCommand() {}
+
+	public static void register(
+		CommandDispatcher<ServerCommandSource> dispatcher,
+		HolderLookup.Provider registries
+	) {
+		if (!QuiltLoader.isDevelopmentEnvironment()) return;
+
+		LiteralArgumentBuilder<ServerCommandSource> root =
 			CommandManager.literal("multibossbar")
-				.requires(source -> source.hasPermissionLevel(2))
-				.then(
-					CommandManager.literal("create")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.then(CommandManager.argument("displayName", StringArgumentType.greedyString())
-								.executes(context -> createBossBar(
-									context.getSource(),
-									StringArgumentType.getString(context, "name"),
-									StringArgumentType.getString(context, "displayName")
-								))
+				.requires(source -> source.hasPermission(2));
+
+		// /multibossbar create <id> <display-name-json...>
+		root.then(CommandManager.literal("create")
+			.then(CommandManager.argument("id", StringArgumentType.word())
+				.executes((ctx)->create(ctx.getSource(),StringArgumentType.getString(ctx, "id"),""))
+				.then(CommandManager.argument(
+							"displayName",
+							StringArgumentType.greedyString()
+						)
+						.executes(ctx -> create(
+							ctx.getSource(),
+							StringArgumentType.getString(ctx, "id"),
+							StringArgumentType.getString(ctx, "displayName")
+						))
+				)
+			)
+		);
+
+		// /multibossbar remove <bar>
+		root.then(CommandManager.literal("remove")
+			.then(existingBar("bar")
+				.executes(ctx -> remove(
+					ctx.getSource(),
+					StringArgumentType.getString(ctx, "bar")
+				))
+			)
+		);
+
+		// /multibossbar list
+		root.then(CommandManager.literal("list")
+			.executes(ctx -> list(ctx.getSource()))
+		);
+
+		// /multibossbar show|hide <bar>
+		root.then(visibilityCommand("show", true));
+		root.then(visibilityCommand("hide", false));
+
+		// /multibossbar players set|add|remove <bar> <players>
+		LiteralArgumentBuilder<ServerCommandSource> players =
+			CommandManager.literal("players");
+
+		players.then(playerCommand("set"));
+		players.then(playerCommand("add"));
+		players.then(playerCommand("remove"));
+
+		root.then(players);
+
+		// Section management.
+		LiteralArgumentBuilder<ServerCommandSource> section =
+			CommandManager.literal("section");
+
+		section.then(CommandManager.literal("add")
+			.then(existingBar("bar")
+				.then(CommandManager.argument("height", IntegerArgumentType.integer(5, 20))
+					.then(CommandManager.argument("type",  StringArgumentType.word())
+						.suggests((context, builder) ->
+							CommandSource.suggestMatching(
+								Arrays.stream(SectionType.values())
+									.map(color -> color.name().toLowerCase(Locale.ROOT)),
+								builder
 							)
 						)
-				)
-				.then(
-					CommandManager.literal("remove")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.executes(context -> removeBossBar(
-								context.getSource(),
-								StringArgumentType.getString(context, "name")
-							))
-						)
-				)
-				.then(
-					CommandManager.literal("list")
-						.executes(context -> listBossBars(context.getSource()))
-				)
-				.then(
-					CommandManager.literal("show")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.executes(context -> showToAll(
-								context.getSource(),
-								StringArgumentType.getString(context, "name")
-							))
-						)
-				)
-				.then(
-					CommandManager.literal("hide")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.executes(context -> hideFromAll(
-								context.getSource(),
-								StringArgumentType.getString(context, "name")
-							))
-						)
-				)
-				.then(
-					CommandManager.literal("addbar")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.then(CommandManager.argument("barName", StringArgumentType.greedyString())
-								.executes(context -> addBar(
-									context.getSource(),
-									StringArgumentType.getString(context, "name"),
-									StringArgumentType.getString(context, "barName")
-								))
+						.then(CommandManager.argument("color",  StringArgumentType.word())
+							.suggests((context, builder) ->
+								CommandSource.suggestMatching(
+									Arrays.stream(BossBar.Color.values())
+										.map(color -> color.name().toLowerCase(Locale.ROOT)),
+									builder
+								)
 							)
-						)
-				)
-				.then(
-					CommandManager.literal("removebar")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.then(CommandManager.argument("index", FloatArgumentType.floatArg())
-								.executes(context -> removeBar(
-									context.getSource(),
-									StringArgumentType.getString(context, "name"),
-									(int) FloatArgumentType.getFloat(context, "index")
+							.then(CommandManager.argument("style",  StringArgumentType.word())
+								.suggests((context, builder) ->
+									CommandSource.suggestMatching(
+										Arrays.stream(BossBar.Style.values())
+											.map(color -> color.name().toLowerCase(Locale.ROOT)),
+										builder
+									)
+								)
+								.executes((ctx)->addSection(
+									ctx.getSource(),
+									StringArgumentType.getString(ctx, "bar"),
+									IntegerArgumentType.getInteger(ctx, "height"),
+									parseEnum(SectionType.class, StringArgumentType.getString(ctx,"type")),
+									parseEnum(BossBar.Color.class, StringArgumentType.getString(ctx,"color")),
+									parseEnum(BossBar.Style.class, StringArgumentType.getString(ctx,"style")),
+									""
 								))
-							)
-						)
-				)
-				.then(
-					CommandManager.literal("setpercent")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.then(CommandManager.argument("barIndex", FloatArgumentType.floatArg())
-								.then(CommandManager.argument("percent", FloatArgumentType.floatArg(0, 100))
-									.executes(context -> setPercent(
-										context.getSource(),
-										StringArgumentType.getString(context, "name"),
-										(int) FloatArgumentType.getFloat(context, "barIndex"),
-										FloatArgumentType.getFloat(context, "percent") / 100f
-									))
+								.then(CommandManager.argument(
+											"name",
+											StringArgumentType.greedyString()
+										)
+										.executes(ctx -> addSection(
+											ctx.getSource(),
+											StringArgumentType.getString(ctx, "bar"),
+											IntegerArgumentType.getInteger(ctx, "height"),
+											parseEnum(SectionType.class, StringArgumentType.getString(ctx,"type")),
+											parseEnum(BossBar.Color.class, StringArgumentType.getString(ctx,"color")),
+											parseEnum(BossBar.Style.class, StringArgumentType.getString(ctx,"style")),
+											StringArgumentType.getString(ctx, "name")
+										))
 								)
 							)
 						)
+					)
 				)
-				.then(
-					CommandManager.literal("setcolor")
-						.then(CommandManager.argument("name", StringArgumentType.word())
-							.then(CommandManager.argument("barIndex", FloatArgumentType.floatArg())
-								.then(CommandManager.argument("color", StringArgumentType.word())
-									.executes(context -> setColor(
-										context.getSource(),
-										StringArgumentType.getString(context, "name"),
-										(int) FloatArgumentType.getFloat(context, "barIndex"),
-										StringArgumentType.getString(context, "color")
-									))
-								)
+			)
+		);
+
+		section.then(CommandManager.literal("remove")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.executes(ctx -> removeSection(
+						ctx.getSource(),
+						StringArgumentType.getString(ctx, "bar"),
+						IntegerArgumentType.getInteger(ctx, "index")
+					))
+				)
+			)
+		);
+
+		section.then(sectionProperty("name", "name",
+			StringArgumentType.greedyString(),
+			(source, bar, index, value) -> {
+				Text name = parseTextJson(source, value);
+				if (name == null) return 0;
+
+				ServerBossBarSection target = getSection(source, bar, index);
+				if (target == null) return 0;
+
+				target.setName(name);
+				source.sendFeedback(
+					() -> Text.literal("Updated the name of section " + index + " in '" + bar + "'."),
+					false
+				);
+				return 1;
+			}
+		));
+
+		section.then(CommandManager.literal("percent")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument("percent", FloatArgumentType.floatArg(0, 100))
+						.executes(ctx -> {
+							String bar = StringArgumentType.getString(ctx, "bar");
+							int index = IntegerArgumentType.getInteger(ctx, "index");
+							float percent = FloatArgumentType.getFloat(ctx, "percent");
+
+							ServerBossBarSection target = getSection(
+								ctx.getSource(), bar, index
+							);
+							if (target == null) return 0;
+
+							target.setPercent(percent / 100.0F);
+							ctx.getSource().sendFeedback(
+								() -> Text.literal(
+									"Set section " + index + " in '" + bar
+										+ "' to " + percent + "%."
+								),
+								false
+							);
+							return 1;
+						})
+					)
+				)
+			)
+		);
+
+		section.then(CommandManager.literal("color")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument("color", StringArgumentType.word())
+						.suggests((context, builder) ->
+							CommandSource.suggestMatching(
+								Arrays.stream(BossBar.Color.values())
+									.map(color -> color.name().toLowerCase(Locale.ROOT)),
+								builder
 							)
 						)
+						.executes(ctx -> {
+							String bar = StringArgumentType.getString(ctx, "bar");
+							int index = IntegerArgumentType.getInteger(ctx, "index");
+							BossBar.Color color = parseEnum(BossBar.Color.class, StringArgumentType.getString(ctx,"color"));
+
+							if (color == null)
+							{
+								ctx.getSource().sendError(Text.literal("Invalid enum: "+StringArgumentType.getString(ctx,"color")));
+								return 0;
+							}
+
+							ServerBossBarSection target = getSection(
+								ctx.getSource(), bar, index
+							);
+							if (target == null) return 0;
+
+							target.setColor(color);
+							ctx.getSource().sendFeedback(
+								() -> Text.literal(
+									"Set section " + index + " in '" + bar
+										+ "' to color " + color.name() + "."
+								),
+								false
+							);
+							return 1;
+						})
+					)
 				)
-				.then(
-					CommandManager.literal("help")
-						.executes(context -> help(context.getSource()))
+			)
+		);
+
+		section.then(CommandManager.literal("style")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument("style", StringArgumentType.word())
+						.suggests((context, builder) ->
+							CommandSource.suggestMatching(
+								Arrays.stream(BossBar.Color.values())
+									.map(color -> color.name().toLowerCase(Locale.ROOT)),
+								builder
+							)
+						)
+						.executes(ctx -> {
+							String bar = StringArgumentType.getString(ctx, "bar");
+							int index = IntegerArgumentType.getInteger(ctx, "index");
+							BossBar.Style style = parseEnum(BossBar.Style.class, StringArgumentType.getString(ctx,"style"));
+
+							if (style == null)
+							{
+								ctx.getSource().sendError(Text.literal("Invalid enum: "+StringArgumentType.getString(ctx,"style")));
+								return 0;
+							}
+							ServerBossBarSection target = getSection(
+								ctx.getSource(), bar, index
+							);
+							if (target == null) return 0;
+
+							target.setStyle(style);
+							ctx.getSource().sendFeedback(
+								() -> Text.literal(
+									"Set section " + index + " in '" + bar
+										+ "' to style " + style.name() + "."
+								),
+								false
+							);
+							return 1;
+						})
+					)
 				)
+			)
+		);
+
+		section.then(CommandManager.literal("type")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument("type", StringArgumentType.word())
+						.suggests((context, builder) ->
+							CommandSource.suggestMatching(
+								Arrays.stream(SectionType.values())
+									.map(color -> color.name().toLowerCase(Locale.ROOT)),
+								builder
+							)
+						)
+						.executes(ctx -> {
+							String bar = StringArgumentType.getString(ctx, "bar");
+							int index = IntegerArgumentType.getInteger(ctx, "index");
+							SectionType type = parseEnum(SectionType.class, StringArgumentType.getString(ctx,"type"));
+
+							if (type == null)
+							{
+								ctx.getSource().sendError(Text.literal("Invalid enum: "+StringArgumentType.getString(ctx,"type")));
+								return 0;
+							}
+							ServerBossBarSection target = getSection(
+								ctx.getSource(), bar, index
+							);
+							if (target == null) return 0;
+
+							target.setSectionType(type);
+							ctx.getSource().sendFeedback(
+								() -> Text.literal(
+									"Set section " + index + " in '" + bar
+										+ "' to type " + type.name() + "."
+								),
+								false
+							);
+							return 1;
+						})
+					)
+				)
+			)
+		);
+
+		section.then(CommandManager.literal("height")
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument("height", IntegerArgumentType.integer(1, 10))
+						.executes(ctx -> {
+							String bar = StringArgumentType.getString(ctx, "bar");
+							int index = IntegerArgumentType.getInteger(ctx, "index");
+							int height = IntegerArgumentType.getInteger(ctx, "height");
+
+							ServerBossBarSection target = getSection(
+								ctx.getSource(), bar, index
+							);
+							if (target == null) return 0;
+
+							target.setScaleSupplier(height);
+							ctx.getSource().sendFeedback(
+								() -> Text.literal(
+									"Set section " + index + " in '" + bar
+										+ "' to height " + height + "."
+								),
+								false
+							);
+							return 1;
+						})
+					)
+				)
+			)
+		);
+
+		root.then(section);
+
+		root.then(CommandManager.literal("help")
+			.executes(ctx -> {
+				ctx.getSource().sendFeedback(
+					() -> Text.literal(
+						"Use /multibossbar create, remove, list, show, hide, "
+							+ "players, or section. Tab-complete arguments for options."
+					),
+					false
+				);
+				return 1;
+			})
+		);
+
+		dispatcher.register(root);
+	}
+
+	private static <T extends Enum<T>> T parseEnum(Class<T> clazz, String name)
+	{
+		T val;
+		try{
+			val = Enum.valueOf(clazz,name);
+		}catch (IllegalArgumentException ignored){
+			try{
+				val = Enum.valueOf(clazz,name.toUpperCase());
+			}catch (IllegalArgumentException ignored2){
+				try{
+					val = Enum.valueOf(clazz,name.toLowerCase());
+				}catch (IllegalArgumentException ignored3){
+					val = null;
+				}
+			}
+		}
+		return val;
+	}
+
+	private static LiteralArgumentBuilder<ServerCommandSource> visibilityCommand(
+		String literal,
+		boolean visible
+	) {
+		return CommandManager.literal(literal)
+			.then(existingBar("bar")
+				.executes(ctx -> {
+					String id = StringArgumentType.getString(ctx, "bar");
+					ServerMultiBossBar bar = BARS.get(id);
+
+					// The argument type checks existence during parsing.
+					if (bar == null) return unknownBar(ctx.getSource(), id);
+
+					bar.setVisible(visible);
+					ctx.getSource().sendFeedback(
+						() -> Text.literal(
+							"Boss bar '" + id + "' is now "
+								+ (visible ? "visible." : "hidden.")
+						),
+						false
+					);
+					return 1;
+				})
+			);
+	}
+
+	private static LiteralArgumentBuilder<ServerCommandSource> playerCommand(
+		String operation
+	) {
+		return CommandManager.literal(operation)
+			.then(existingBar("bar")
+				.then(CommandManager.argument("players", EntityArgumentType.players())
+					.executes(ctx -> {
+						String id = StringArgumentType.getString(ctx, "bar");
+						ServerMultiBossBar bar = BARS.get(id);
+						if (bar == null) return unknownBar(ctx.getSource(), id);
+
+						Collection<ServerPlayerEntity> selected =
+							EntityArgumentType.getPlayers(ctx, "players");
+
+						switch (operation) {
+							case "set" ->
+								bar.setPlayers(new HashSet<>(selected));
+							case "add" ->
+								selected.forEach(bar::addPlayer);
+							case "remove" ->
+								selected.forEach(bar::removePlayer);
+							default -> throw new IllegalStateException(
+								"Unhandled player operation: " + operation
+							);
+						}
+
+						ctx.getSource().sendFeedback(
+							() -> Text.literal(
+								operation + " players " + selected.size()
+									+ " player(s) " + operation + "ed for '" + id + "'."
+							),
+							false
+						);
+						return selected.size();
+					})
+				)
+			);
+	}
+
+	private static int create(
+		ServerCommandSource source,
+		String id,
+		String displayNameJson
+	) {
+		if (BARS.containsKey(id)) {
+			source.sendError(Text.literal("A boss bar named '" + id + "' already exists."));
+			return 0;
+		}
+
+		Text displayName = parseTextJson(source, displayNameJson);
+		if (displayName == null) return 0;
+
+		ServerMultiBossBar bar = new ServerMultiBossBar();
+
+	    bar.setDisplayName(displayName);
+
+		BARS.put(id, bar);
+
+		// Create the client-side container before sending its bar data.
+		try {
+			ServerPlayerEntity player = source.getPlayer();
+			MultibossBarS2CPacket.createBar(bar).send(player);
+			bar.addPlayer(player);
+		} catch (Exception ignored) {
+			// Console and command-block sources do not have a player.
+		}
+
+		source.sendFeedback(
+			() -> Text.literal("Created boss bar '" + id + "'."),
+			false
+		);
+		return 1;
+	}
+
+	private static int remove(ServerCommandSource source, String id) {
+		ServerMultiBossBar bar = BARS.remove(id);
+		if (bar == null) return unknownBar(source, id);
+
+		ServerMultiBossBar.removeBar(bar);
+
+		source.sendFeedback(
+			() -> Text.literal("Removed boss bar '" + id + "'."),
+			false
+		);
+		return 1;
+	}
+
+	private static int list(ServerCommandSource source) {
+		if (BARS.isEmpty()) {
+			source.sendFeedback(
+				() -> Text.literal("No boss bars are registered."),
+				false
+			);
+			return 1;
+		}
+
+		BARS.forEach((id, bar) -> source.sendFeedback(
+			() -> Text.literal(
+				id + " — " + bar.count() + " section(s), "
+					+ (bar.isVisible() ? "visible" : "hidden")
+					+ ", " + bar.getPlayers().size() + " player(s)"
+			),
+			false
+		));
+
+		return BARS.size();
+	}
+
+	private static int addSection(
+		ServerCommandSource source,
+		String id,
+		int height,
+		SectionType type,
+		BossBar.Color color,
+		BossBar.Style style,
+		String nameJson
+	) {
+		if (color == null || type == null || style == null)
+		{
+			source.sendError(Text.literal("Failed to add a section using an invalid or null enum."));
+			return 0;
+		}
+		try{
+			ServerMultiBossBar bar = BARS.get(id);
+			if (bar == null) return unknownBar(source, id);
+
+			Text name = parseTextJson(source, nameJson);
+			if (name == null) return 0;
+
+			int index = bar.count();
+			ServerBossBarSection section = new ServerBossBarSection(
+				index,
+				name,
+				color,
+				style,
+				type,
+				height
+			);
+
+			section.setContainer(bar);
+			bar.addBossBar(section);
+
+			// This is a structural change, so resync the container.
+			bar.resync();
+
+			source.sendFeedback(
+				() -> Text.literal("Added section " + index + " to '" + id + "'."),
+				false
+			);
+			return 1;
+		}catch (Exception e){
+			MultibossbarMod.LOGGER.warn("An error occurred adding section",e);
+			source.sendError(Text.literal("An error occurred adding section, check the console!"));
+			return 0;
+		}
+	}
+	@FunctionalInterface
+	private interface SectionPropertySetter {
+		int apply(
+			ServerCommandSource source,
+			String bar,
+			int index,
+			String value
 		);
 	}
 
-	private static int createBossBar(ServerCommandSource source, String name, String displayName) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		if (manager.createBossBar(name, Text.literal(displayName))) {
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.created", name), false);
-			return 1;
-		} else {
-			source.sendError(Text.translatable("multibossbar.command.error.exists", name));
-			return 0;
-		}
+	private static <T> LiteralArgumentBuilder<ServerCommandSource> sectionProperty(
+		String literal,
+		String argumentName,
+		ArgumentType<T> argumentType,
+		SectionPropertySetter setter
+	) {
+		return CommandManager.literal(literal)
+			.then(existingBar("bar")
+				.then(sectionIndex()
+					.then(CommandManager.argument(argumentName, argumentType)
+						.executes(ctx -> {
+							try{
+								//noinspection unchecked
+								T value = (T) ctx.getArgument(argumentName, argumentType.getClass());
+								return setter.apply(
+									ctx.getSource(),
+									StringArgumentType.getString(ctx, "bar"),
+									IntegerArgumentType.getInteger(ctx, "index"),
+									String.valueOf(value)
+								);
+							}catch (Exception ignored){}
+							return 0;
+						})
+					)
+				)
+			);
 	}
+	private static int removeSection(
+		ServerCommandSource source,
+		String id,
+		int index
+	) {
+		ServerMultiBossBar bar = BARS.get(id);
+		if (bar == null) return unknownBar(source, id);
+		if (!validIndex(source, bar, index)) return 0;
 
-	private static int removeBossBar(ServerCommandSource source, String name) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		if (manager.removeBossBar(name)) {
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.removed", name), false);
-			return 1;
-		} else {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound", name));
-			return 0;
-		}
-	}
+		bar.removeBossBar(index);
+		bar.resync();
 
-	private static int listBossBars(ServerCommandSource source) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.bar_count", manager.getCount()), false);
-		if (manager.getCount() == 0) {
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.error.no_bars"), false);
-			return 1;
-		}
-		for (String name : manager.getBossBarNames()) {
-			ServerMultiBossBar bar = manager.getBossBar(name);
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.bar_info" , name ,bar.getMinibars().size()), false);
-		}
+		source.sendFeedback(
+			() -> Text.literal("Removed section " + index + " from '" + id + "'."),
+			false
+		);
 		return 1;
 	}
 
-	private static int showToAll(ServerCommandSource source, String name) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		if (manager.showToAll(name)) {
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.show", name), false);
-			return 1;
-		} else {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound", name));
-			return 0;
-		}
-	}
-
-	private static int hideFromAll(ServerCommandSource source, String name) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		if (manager.hideFromAll(name)) {
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.hiding", name), false);
-			return 1;
-		} else {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound",name));
-			return 0;
-		}
-	}
-
-	private static int addBar(ServerCommandSource source, String name, String barName) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		ServerMultiBossBar bar = manager.getBossBar(name);
+	private static ServerBossBarSection getSection(
+		ServerCommandSource source,
+		String id,
+		int index
+	) {
+		ServerMultiBossBar bar = BARS.get(id);
 		if (bar == null) {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound",name));
-			return 0;
+			unknownBar(source, id);
+			return null;
 		}
-		ServerBossBar serverBossBar = new ServerBossBar(Text.literal(barName), BossBar.Color.WHITE, BossBar.Style.PROGRESS);
-		bar.addBossBar(serverBossBar);
-		source.sendFeedback(() -> Text.translatable("§aAdded bar to: §f" + name + " §a(Index: " + (bar.getMinibars().size() - 1) + ")"), false);
-		return 1;
+		if (!validIndex(source, bar, index)) return null;
+
+		BossBarSection section = bar.get(index);
+		if (!(section instanceof ServerBossBarSection serverSection)) {
+			source.sendError(Text.literal(
+				"Section " + index + " is not a server-managed section."
+			));
+			return null;
+		}
+
+		return serverSection;
 	}
 
-	private static int removeBar(ServerCommandSource source, String name, int index) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		ServerMultiBossBar bar = manager.getBossBar(name);
-		if (bar == null) {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound",name));
-			return 0;
+	private static boolean validIndex(
+		ServerCommandSource source,
+		ServerMultiBossBar bar,
+		int index
+	) {
+		if (index < 0 || index >= bar.count()) {
+			source.sendError(Text.literal(
+				"Invalid section index " + index
+					+ ". Valid indices are 0 through " + (bar.count() - 1) + "."
+			));
+			return false;
 		}
+		return true;
+	}
+
+	private static int unknownBar(ServerCommandSource source, String id) {
+		source.sendError(Text.literal("Unknown boss bar '" + id + "'."));
+		return 0;
+	}
+
+	private static Text parseTextJson(
+		ServerCommandSource source,
+		String json
+	) {
+		if (json == null || json.isBlank() || json.equalsIgnoreCase("{}")) return Text.empty(); // Its fine to be blank.
 		try {
-			bar.removeBossBar(index);
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.removed", index), false);
-			return 1;
-		} catch (IndexOutOfBoundsException e) {
-			source.sendError(Text.translatable("multibossbar.command.error.invalidindex", index));
-			return 0;
+			Text text = Text.SerializationUtil.fromJson(
+				json,
+				source.getRegistryManager()
+			);
+
+			if (text == null) {
+				source.sendError(Text.literal(
+					"Display-name JSON must represent a text component, not null."
+				));
+			}
+			return text;
+		} catch (Exception e) {
+			source.sendError(Text.literal(
+				"Invalid text JSON: " + e.getMessage()
+			));
+			return null;
 		}
 	}
 
-	private static int setPercent(ServerCommandSource source, String name, int barIndex, float percent) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		ServerMultiBossBar bar = manager.getBossBar(name);
-		if (bar == null) {
-			source.sendError(Text.translatable("multibossbar.command.error.notfound",name));
-			return 0;
-		}
-		try {
-			bar.setPercent(barIndex, percent);
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.percentageset",percent*100), false);
-			return 1;
-		} catch (IndexOutOfBoundsException e) {
-			source.sendError(Text.translatable("multibossbar.command.error.invalidindex", barIndex));
-			return 0;
-		}
+	private static RequiredArgumentBuilder<ServerCommandSource, String> existingBar(
+		String argumentName
+	) {
+		return CommandManager.argument(argumentName, StringArgumentType.word())
+			.suggests((context, builder) -> {
+				BARS.keySet().forEach(builder::suggest);
+				return builder.buildFuture();
+			});
 	}
 
-	private static int setColor(ServerCommandSource source, String name, int barIndex, String colorStr) {
-		MultiBossBarManager manager = MultiBossBarManager.getInstance(source.getServer());
-		ServerMultiBossBar bar = manager.getBossBar(name);
-		if (bar == null) {
-			source.sendError(Text.translatable("multibossbar.command.feedback.setcolor",name));
-			return 0;
-		}
-		try {
-			BossBar.Color color = BossBar.Color.valueOf(colorStr.toUpperCase());
-			bar.setColor(barIndex, color);
-			source.sendFeedback(() -> Text.translatable("multibossbar.command.feedback.setcolor", colorStr), false);
-			return 1;
-		} catch (IllegalArgumentException e) {
-			source.sendError(Text.translatable("multibossbar.command.error.invalidcolorlist"));
-			return 0;
-		} catch (IndexOutOfBoundsException e) {
-			source.sendError(Text.translatable("multibossbar.command.error.invalidindex", barIndex));
-			return 0;
-		}
-	}
+	private static RequiredArgumentBuilder<ServerCommandSource, Integer> sectionIndex() {
+		return CommandManager.argument("index", IntegerArgumentType.integer(0))
+			.suggests((context, builder) -> {
+				String id = StringArgumentType.getString(context, "bar");
+				ServerMultiBossBar bar = BARS.get(id);
 
-	private static int help(ServerCommandSource source) {
-		source.sendFeedback(() -> Text.translatable("multibossbar.command.help_command"), false);
+				if (bar != null) {
+					for (int i = 0; i < bar.count(); i++) {
+						builder.suggest(i);
+					}
+				}
 
-//		source.sendFeedback(() -> Text.translatable("§6=== MultiBossBar Commands ==="), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar create <name> <displayName>§7 - Create a new boss bar"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar remove <name>§7 - Remove a boss bar"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar list§7 - List all boss bars"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar show <name>§7 - Show boss bar to all players"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar hide <name>§7 - Hide boss bar from all players"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar addbar <name> <barName>§7 - Add a bar to the boss bar"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar removebar <name> <index>§7 - Remove a bar from the boss bar"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar setpercent <name> <barIndex> <percent>§7 - Set bar health (0-100)"), false);
-//		source.sendFeedback(() -> Text.translatable("§e/multibossbar setcolor <name> <barIndex> <color>§7 - Set bar color"), false);
-		return 1;
+				return builder.buildFuture();
+			});
 	}
 }
-

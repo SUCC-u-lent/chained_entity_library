@@ -1,167 +1,198 @@
 package com.ubunifu.multibossbar.common.networking;
 
 import com.ubunifu.multibossbar.common.MultibossbarMod;
-import com.ubunifu.multibossbar.common.barhandler.Minibar;
-import com.ubunifu.multibossbar.common.barhandler.MultiBossBar;
-import net.minecraft.entity.boss.BossBar;
-import net.minecraft.network.PacketByteBuf;
+import com.ubunifu.multibossbar.common.boss_bar.PacketType;
+import com.ubunifu.multibossbar.common.boss_bar.container.*;
+import com.ubunifu.multibossbar.common.boss_bar.sections.ServerBossBarSection;
+import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
+import net.fabricmc.fabric.api.networking.v1.*;
+import net.minecraft.network.*;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.payload.*;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.text.*;
+import net.minecraft.util.*;
 import org.jetbrains.annotations.NotNull;
-import org.quiltmc.qsl.networking.api.PacketByteBufs;
-import org.quiltmc.qsl.networking.api.ServerPlayNetworking;
 
-import java.util.function.Function;
+import java.util.UUID;
+import java.util.function.*;
 
-public class MultibossBarS2CPacket {
-	public enum PacketType {
-		ADD_BAR,
-		REMOVE_BAR,
-		SET_DISPLAY_NAME,
-		SET_BAR_COLOR,
-		SET_BAR_PERCENTAGE,
-		SET_BAR_STYLE,
-		SET_DARKEN_SKY,
-		SET_DRAGON_MUSIC,
-		SET_THICKEN_FOG,
-		CLEAR_BARS,
-		ADD_ALL_BARS,
-		SET_NAME
-	}
-	public static final Identifier ID = new Identifier(MultibossbarMod.MOD_ID,"multibossbar_s2c");
+public record MultibossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPayload {
 
-	@NotNull final PacketByteBuf data;
-	public MultibossBarS2CPacket(@NotNull PacketByteBuf data)
-	{this.data = data;}
+	public static final PacketCodec<? super PacketByteBuf, MultibossBarS2CPacket> CODEC =
+		new PacketCodec<>() {
+			@Override
+			public void encode(PacketByteBuf buf, MultibossBarS2CPacket value) {
+				buf.writeBytes(value.data());
+			}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createAddPacket(Minibar minibar) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.ADD_BAR);
-			minibar.serializeToBuf(buf);
-			return new MultibossBarS2CPacket(buf);
+			@Override
+			public MultibossBarS2CPacket decode(PacketByteBuf buf) {
+				return new MultibossBarS2CPacket(
+					new PacketByteBuf(buf.readBytes(buf.readableBytes()))
+				);
+			}
 		};
+
+
+	@Override
+	public Id<? extends CustomPayload> getId() {
+		return ID;
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createRemoveBarPacket(int index) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.REMOVE_BAR);
-			buf.writeInt(index);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static final Id<MultibossBarS2CPacket> ID =
+		new Id<>(new Identifier(MultibossbarMod.MOD_ID, "multibossbar_s2c"));
+
+	public void send(ServerPlayerEntity player) {
+		ServerPlayNetworking.send(player, this);
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetDisplayNamePacket(MultiBossBar serverMultiBossBar, @NotNull Text text)
-	{
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(serverMultiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_NAME);
-			buf.writeText(text);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateProgress(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder(serverBossBarSection);
+		builder.setPacketType( PacketType.UPDATE_PERCENT);
+		builder.setRemainingConsumer((p)->p.writeFloat(serverBossBarSection.percent));
+		return builder.build();
+	}
+	public static MultibossBarS2CPacket sendBars(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.SEND_ALL_BARS );
+		builder.setRemainingConsumer(serverMultiBossBar::writeToBuffer);
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetBarNamePacket(int index, @NotNull Text displayName) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_DISPLAY_NAME);
-			buf.writeInt(index);
-			buf.writeText(displayName);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateContainerName(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.UPDATE_CONTAINER_NAME );
+		builder.setRemainingConsumer( p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(p,serverMultiBossBar.getDisplayName()) );
+		return builder.build();
+	}
+	public static MultibossBarS2CPacket resync(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.RESYNC );
+		builder.setRemainingConsumer(serverMultiBossBar::writeToBuffer);
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetBarColorPacket(int index, BossBar.Color color) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_BAR_COLOR);
-			buf.writeInt(index);
-			buf.writeEnumConstant(color);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket clearBars(ServerMultiBossBar serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar );
+		builder.setPacketType( PacketType.CLEAR_BARS );
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetBarPercentagePacket(int index, float percent) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_BAR_PERCENTAGE);
-			buf.writeInt(index);
-			buf.writeFloat(percent);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateColor(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_COLOR );
+		builder.setRemainingConsumer((p)->{
+			p.writeEnumConstant( serverBossBarSection.color );
+		});
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetBarStylePacket(int index, BossBar.Style style) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_BAR_STYLE);
-			buf.writeInt(index);
-			buf.writeEnumConstant(style);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateStyle(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_STYLE );
+		builder.setRemainingConsumer((p)-> p.writeEnumConstant( serverBossBarSection.style ));
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetDarkenSkyBarPacket(int index, boolean darkenSky) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_DARKEN_SKY);
-			buf.writeInt(index);
-			buf.writeBoolean(darkenSky);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateDarkenSky(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_DARKEN_SKY );
+		builder.setRemainingConsumer(p->p.writeBoolean(serverBossBarSection.darkenSky));
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetBarMusicPacket(int index, boolean dragonMusic) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_DRAGON_MUSIC);
-			buf.writeInt(index);
-			buf.writeBoolean(dragonMusic);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket setScale(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.SET_BAR_SCALE );
+		builder.setRemainingConsumer(p->p.writeInt(serverBossBarSection.getScaleSupplier()));
+		return builder.build();
 	}
 
-	public static Function<MultiBossBar, MultibossBarS2CPacket> createSetThickenFogBarPacket(int index, boolean thickenFog) {
-		return (multiBossBar) -> {
-			PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-			buf.writeUuid(multiBossBar.getUuid());
-			buf.writeEnumConstant(PacketType.SET_THICKEN_FOG);
-			buf.writeInt(index);
-			buf.writeBoolean(thickenFog);
-			return new MultibossBarS2CPacket(buf);
-		};
+	public static MultibossBarS2CPacket updateDragonMusic(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_DRAGON_MUSIC );
+		builder.setRemainingConsumer(p->p.writeBoolean(serverBossBarSection.dragonMusic));
+		return builder.build();
 	}
 
-	public static MultibossBarS2CPacket createAddAllPacket(MultiBossBar multiBossBar) {
-		PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-		buf.writeUuid(multiBossBar.getUuid());
-		buf.writeEnumConstant(PacketType.ADD_ALL_BARS);
-		buf.writeText(multiBossBar.getDisplayName());
-		buf.writeInt(multiBossBar.getMinibars().size());
-		for (Minibar minibar : multiBossBar.getMinibars())
-			minibar.serializeToBuf(buf);
-		return new MultibossBarS2CPacket(buf);
+	public static MultibossBarS2CPacket updateThickenFog(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_THICKEN_FOG );
+		builder.setRemainingConsumer(p->p.writeBoolean(serverBossBarSection.thickenFog));
+		return builder.build();
 	}
 
-	public static MultibossBarS2CPacket createClearPacket(MultiBossBar multiBossBar)
-	{
-		PacketByteBuf buf = new PacketByteBuf(PacketByteBufs.create());
-		buf.writeUuid(multiBossBar.getUuid());
-		buf.writeEnumConstant(PacketType.CLEAR_BARS);
-		return new MultibossBarS2CPacket(buf);
+	public static MultibossBarS2CPacket updateName(ServerBossBarSection serverBossBarSection) {
+		Builder builder = new Builder( serverBossBarSection );
+		builder.setPacketType( PacketType.UPDATE_NAME );
+		builder.setRemainingConsumer(p->TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode( p, serverBossBarSection.name ));
+		return builder.build();
+	}
+	public static MultibossBarS2CPacket createBar(ServerMultiBossBar serverBossBar) {
+		Builder builder = new Builder( serverBossBar );
+		builder.setPacketType( PacketType.CREATE_BAR );
+		return builder.build();
 	}
 
-	public void send(ServerPlayerEntity player)
-	{ ServerPlayNetworking.send(player, ID, data); }
+	public static MultibossBarS2CPacket removeBar(ServerBossBarSection serverMultiBossBar) {
+		Builder builder = new Builder(serverMultiBossBar);
+		builder.setPacketType(PacketType.REMOVE_BAR);
+		return builder.build();
+	}
+
+	public static MultibossBarS2CPacket updateSectionType(ServerBossBarSection section) {
+		Builder builder = new Builder(section);
+		builder.setPacketType(PacketType.UPDATE_SECTION_TYPE);
+		builder.setRemainingConsumer(p->p.writeEnumConstant(section.getSectionType()));
+		return builder.build();
+	}
+
+	public static MultibossBarS2CPacket setVisible(ServerMultiBossBar serverMultiBossBar, boolean visible) {
+		Builder builder = new Builder(serverMultiBossBar);
+		builder.setPacketType(PacketType.UPDATE_VISIBILITY);
+		builder.setRemainingConsumer(p->p.writeBoolean(visible));
+		return builder.build();
+	}
+
+	public static MultibossBarS2CPacket addBar(ServerBossBarSection serverMultiBossBar) {
+		Builder builder = new Builder( serverMultiBossBar.getContainer() );
+		builder.setPacketType( PacketType.ADD_BAR );
+		builder.setRemainingConsumer((p)->{
+			p.writeInt(serverMultiBossBar.getBarIndex());
+			serverMultiBossBar.serializeToBuf( p );
+		});
+		return builder.build();
+	}
+
+	public static class Builder {
+		private PacketByteBuf buffer;
+		private PacketType packetType;
+		private Consumer<PacketByteBuf> consumer;
+
+		public Builder(BossBarSection section) {
+			this.buffer = PacketByteBufs.create();
+			UUID uuid = section.getContainer().getUuid();
+			int index = section.getBarIndex();
+			this.buffer.writeUuid( uuid );
+			this.buffer.writeBoolean( true );
+			this.buffer.writeInt( index );
+		}
+		public Builder(MultiBossBar bossBar) {
+			this.buffer = PacketByteBufs.create();
+			UUID uuid = bossBar.getUuid();
+			this.buffer.writeUuid( uuid );
+			this.buffer.writeBoolean( false ); // Indicates if its a bar section.
+		}
+		public Builder setPacketType(PacketType packetType) { this.packetType = packetType; return this; }
+		public Builder setRemainingConsumer(Consumer<PacketByteBuf> consumer) {
+			this.consumer = consumer;
+			return this;
+		}
+		public MultibossBarS2CPacket build() {
+			this.buffer.writeEnumConstant( this.packetType );
+			if (this.consumer != null) this.consumer.accept( this.buffer );
+			return new MultibossBarS2CPacket( this.buffer );
+		}
+	}
 }

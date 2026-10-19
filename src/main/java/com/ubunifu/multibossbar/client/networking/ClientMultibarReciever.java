@@ -1,113 +1,168 @@
 package com.ubunifu.multibossbar.client.networking;
 
-import com.ubunifu.multibossbar.common.barhandler.ClientMultiBossBar;
-import com.ubunifu.multibossbar.common.barhandler.Minibar;
+import com.ubunifu.multibossbar.common.MultibossbarMod;
+import com.ubunifu.multibossbar.common.boss_bar.*;
+import com.ubunifu.multibossbar.common.boss_bar.container.*;
+import com.ubunifu.multibossbar.common.boss_bar.sections.ClientBossBarSection;
+import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
 import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.fabricmc.fabric.api.client.networking.v1.*;
+import net.minecraft.entity.boss.BossBar;
 import net.minecraft.network.PacketByteBuf;
-import net.minecraft.text.Text;
-import org.quiltmc.qsl.networking.api.PacketSender;
+import net.minecraft.text.*;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public class ClientMultibarReciever {
 	public static List<ClientMultiBossBar> multiBossBars = new ArrayList<>();
 
-	public static void recieveMultibossBarPacket(MinecraftClient minecraftClient,
-												 ClientPlayNetworkHandler clientPlayNetworkHandler,
-												 PacketByteBuf packetByteBuf,
-												 PacketSender packetSender)
+	public static void recieveMultibossBarPacket(
+		MultibossBarS2CPacket payload,
+		ClientPlayNetworking.Context context)
 	{
-		UUID uuid = packetByteBuf.readUuid();
-		ClientMultiBossBar multiBossBar = verifyBarExists(uuid);
-		MultibossBarS2CPacket.PacketType packetType = packetByteBuf.readEnumConstant(MultibossBarS2CPacket.PacketType.class);
-		switch (packetType)
-		{
-			case ADD_BAR -> {
-				Minibar minibar = Minibar.deserializeFromBuf(packetByteBuf);
-				multiBossBar.addBossBar(minibar);
-				replaceBar(multiBossBar);
+		PacketByteBuf packetByteBuf
+			= payload.data();
+
+		UUID bossBarUUID = packetByteBuf.readUuid();
+		boolean isSection = packetByteBuf.readBoolean();
+		if (isSection) receiveSectionBar(bossBarUUID, packetByteBuf);
+		else receiveContainerBar(bossBarUUID, packetByteBuf);
+	}
+
+	private static void receiveContainerBar(UUID bossBarUUID, PacketByteBuf packetByteBuf) {
+		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
+		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
+		if (bossBar == null) {
+			if (!(packetType == PacketType.CREATE_BAR || packetType == PacketType.SEND_ALL_BARS)) return;
+			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
+			multiBossBars.add(bossBar);
+		}
+		processBody(packetType, bossBar, null, packetByteBuf);
+	}
+
+	private static void receiveSectionBar(UUID bossBarUUID, PacketByteBuf packetByteBuf) {
+		int barIndex = packetByteBuf.readInt();
+		PacketType packetType = packetByteBuf.readEnumConstant(PacketType.class); // Always first
+		ClientMultiBossBar bossBar = verifyBarExists(bossBarUUID);
+		if (bossBar == null) {
+			if (!(packetType == PacketType.CREATE_BAR || packetType == PacketType.SEND_ALL_BARS)) return;
+			bossBar = new ClientMultiBossBar(bossBarUUID, new ArrayList<>(), FillType.VANILLA);
+			multiBossBars.add(bossBar);
+		}
+		ClientBossBarSection section = (ClientBossBarSection) bossBar.getBossBars().get( barIndex );
+		processBody(packetType, bossBar, section, packetByteBuf);
+	}
+	private static void processBody(PacketType packetType, ClientMultiBossBar bossBar, @Nullable ClientBossBarSection section, PacketByteBuf packetByteBuf) {
+		// Upon entering this the packet buffer has already consumed all the "headers" meaning all thats left is the true "payload" part.
+		// Everything after this changes based on the above packet type.
+		switch (packetType){
+			case UPDATE_NAME -> {
+				Text text = TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode( packetByteBuf );
+				Objects.requireNonNull(section);
+				section.setName( text );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_STYLE -> {
+				BossBar.Style style = packetByteBuf.readEnumConstant( BossBar.Style.class );
+				Objects.requireNonNull(section);
+				section.setStyle( style );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_PERCENT -> {
+				float progress = packetByteBuf.readFloat();
+				Objects.requireNonNull(section);
+				section.setPercent( progress );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case SET_BAR_SCALE -> {
+				int barScale = packetByteBuf.readInt();
+				Objects.requireNonNull(section);
+				section.setScaleSupplier( barScale );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_COLOR -> {
+				BossBar.Color style = packetByteBuf.readEnumConstant( BossBar.Color.class );
+				Objects.requireNonNull(section);
+				section.setColor( style );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_DARKEN_SKY -> {
+				boolean darkenSky = packetByteBuf.readBoolean();
+				Objects.requireNonNull(section);
+				section.setDarkenSky( darkenSky );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_DRAGON_MUSIC -> {
+				boolean darkenSky = packetByteBuf.readBoolean();
+				Objects.requireNonNull(section);
+				section.setDragonMusic( darkenSky );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_THICKEN_FOG -> {
+				boolean darkenSky = packetByteBuf.readBoolean();
+				Objects.requireNonNull(section);
+				section.setThickenFog( darkenSky );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
 			}
 			case REMOVE_BAR -> {
+				Objects.requireNonNull(section);
+				bossBar.removeBossBar( section.getBarIndex() );
+				replaceBar(bossBar);
+			}
+			case CLEAR_BARS -> removeBar(bossBar);
+			case ADD_BAR -> {
 				int index = packetByteBuf.readInt();
-				multiBossBar.removeBossBar(index);
-				if (multiBossBar.count() == 0)
-					multiBossBars.remove(multiBossBar);
-				else
-					replaceBar(multiBossBar);
+				ClientBossBarSection section1 = BossBarSection.client_deserializeFromBuf(packetByteBuf);
+				if (bossBar.isIndexOccupied(index))
+					bossBar.setBossBar(index,section1);
+				else bossBar.addBossBar(section1);
+				replaceBar(bossBar);
 			}
-			case SET_DISPLAY_NAME -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setDisplayName(index, packetByteBuf.readText());
-				replaceBar(multiBossBar);
-			}
-			case SET_BAR_COLOR -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setColor(index, packetByteBuf.readEnumConstant(net.minecraft.entity.boss.BossBar.Color.class));
-				replaceBar(multiBossBar);
-			}
-			case SET_BAR_PERCENTAGE -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setPercent(index, packetByteBuf.readFloat());
-				replaceBar(multiBossBar);
-			}
-			case SET_BAR_STYLE -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setStyle(index, packetByteBuf.readEnumConstant(net.minecraft.entity.boss.BossBar.Style.class));
-				replaceBar(multiBossBar);
-			}
-			case SET_DARKEN_SKY -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setDarkenSky(index, packetByteBuf.readBoolean());
-				replaceBar(multiBossBar);
-			}
-			case SET_DRAGON_MUSIC -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setDragonMusic(index, packetByteBuf.readBoolean());
-				replaceBar(multiBossBar);
-			}
-			case SET_THICKEN_FOG -> {
-				int index = packetByteBuf.readInt();
-				multiBossBar.setThickenFog(index, packetByteBuf.readBoolean());
-				replaceBar(multiBossBar);
-			}
-			case CLEAR_BARS -> {
-				multiBossBar.clear();
-				if (multiBossBar.count() == 0)
-					multiBossBars.remove(multiBossBar);
-				else
-					replaceBar(multiBossBar);
-			}
-			case ADD_ALL_BARS -> {
-				Text displayName = packetByteBuf.readText();
-				multiBossBar.setText(displayName);
-				int barCount = packetByteBuf.readInt();
-				for (int i = 0; i < barCount; i++)
+			case SEND_ALL_BARS, RESYNC -> {
+				ClientMultiBossBar bar = ClientMultiBossBar.client_deserializeFromBuffer(packetByteBuf);
+				if (bar.getUuid() != bossBar.getUuid())
 				{
-					Minibar minibar = Minibar.deserializeFromBuf(packetByteBuf);
-					multiBossBar.addBossBar(minibar);
-				}
-				replaceBar(multiBossBar);
+					removeBar(bossBar);
+					multiBossBars.add(bar);
+				} else replaceBar(bar);
 			}
-			case SET_NAME -> {
-				Text displayName = packetByteBuf.readText();
-				multiBossBar.setText(displayName);
-				replaceBar(multiBossBar);
+			case UPDATE_VISIBILITY -> {
+				boolean visibility = packetByteBuf.readBoolean();
+				bossBar.setVisible(visibility);
+				replaceBar(bossBar);
+			}
+			case CREATE_BAR -> {} // This doesn't need anything done.
+			case UPDATE_SECTION_TYPE -> {
+				SectionType type = packetByteBuf.readEnumConstant(SectionType.class);
+				Objects.requireNonNull(section);
+				section.setSectionType( type );
+				bossBar.replaceBar(section);
+				replaceBar(bossBar);
+			}
+			case UPDATE_CONTAINER_NAME -> {
+				Text text = TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode( packetByteBuf );
+				bossBar.setDisplayName( text );
+				replaceBar(bossBar);
 			}
 		}
 	}
+
+	private static void removeBar(ClientMultiBossBar bossBar) {
+		multiBossBars.removeIf(bar -> bar.getUuid().equals(bossBar.getUuid()));
+	}
+
 	private static ClientMultiBossBar verifyBarExists(UUID uuid)
 	{
-		ClientMultiBossBar multiBossBar = multiBossBars.stream().filter(bar -> bar.getUuid().equals(uuid)).findFirst().orElse(null);
-		if (multiBossBar == null)
-		{
-			multiBossBar = new ClientMultiBossBar();
-			multiBossBars.add(multiBossBar);
-		}
-		return multiBossBar;
+		return multiBossBars.stream().filter(bar -> bar.getUuid().equals(uuid)).findFirst().orElse(null);
 	}
 	private static void replaceBar(ClientMultiBossBar newBar)
 	{
