@@ -2,7 +2,6 @@ package com.ubunifu.multibossbar.client.mixin;
 
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.ubunifu.multibossbar.client.networking.ClientMultibarReciever;
 import com.ubunifu.multibossbar.common.MultibossbarMod;
 import com.ubunifu.multibossbar.common.boss_bar.SectionType;
 import com.ubunifu.multibossbar.common.boss_bar.container.ClientMultiBossBar;

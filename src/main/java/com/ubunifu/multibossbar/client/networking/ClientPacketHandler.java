@@ -1,6 +1,7 @@
 package com.ubunifu.multibossbar.client.networking;
 
-import com.ubunifu.multibossbar.common.networking.MultibossBarS2CPacket;
+import com.ubunifu.multibossbar.common.networking.barPacket.BossBarS2CPacket;
+import com.ubunifu.multibossbar.common.networking.serverBarPacket.BossBarContainerS2CPacket;
 import net.fabricmc.fabric.api.client.networking.v1.*;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
@@ -10,10 +11,9 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 public class ClientPacketHandler {
 
 	public static void registerPackets() {
-		PayloadTypeRegistry.playS2C().register( MultibossBarS2CPacket.ID, MultibossBarS2CPacket.CODEC );
-		ClientPlayNetworking.registerGlobalReceiver(
-			MultibossBarS2CPacket.ID,
-			ClientMultibarReciever::recieveMultibossBarPacket
-		);
+		PayloadTypeRegistry.playS2C().register( BossBarContainerS2CPacket.ID, BossBarContainerS2CPacket.CODEC );
+		PayloadTypeRegistry.playS2C().register( BossBarS2CPacket.ID, BossBarS2CPacket.CODEC );
+		ClientPlayNetworking.registerGlobalReceiver(BossBarContainerS2CPacket.ID, BossBarContainerS2CPacket::recieve);
+		ClientPlayNetworking.registerGlobalReceiver(BossBarS2CPacket.ID, BossBarS2CPacket::recieve);
 	}
 }

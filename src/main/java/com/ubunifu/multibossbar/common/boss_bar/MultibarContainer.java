@@ -1,0 +1,94 @@
+package com.ubunifu.multibossbar.common.boss_bar;
+
+import com.ubunifu.multibossbar.common.networking.barPacket.BossBarS2CPacket;
+import net.minecraft.entity.boss.BossBar;
+import net.minecraft.text.Text;
+import org.jetbrains.annotations.*;
+
+import java.util.*;
+
+public class MultibarContainer {
+	protected final UUID uuid;
+	protected boolean darkenSky;
+	protected boolean dragonMusic;
+	protected boolean thickenFog;
+	protected final List<BarSection> barSectionList = new ArrayList<>();
+
+	/**
+	 * Creates a section and adds it to the container.
+	 * @param container The container to add it to.
+	 * @param name The {@link Text} name of the bar. (Optional)
+	 * @param percentage A 0.0 -> 1.0 number representing the fill, 0.0 being 0% and 1.0 being 100%
+	 * @param color The color of the bar.
+	 * @param style The style of the bar.
+	 * @return A reference to the stored value, this means changing values in the returned object will reflect in the container.
+	 */
+	public static BarSection createSection(@NotNull MultibarContainer container, @Nullable Text name, float percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
+		BarSection section = new BarSection(
+			container,
+			UUID.randomUUID(),
+			name == null ? Text.empty() : name,
+			Math.clamp(percentage,0.0,1.0),
+			color,
+			style,
+			Math.clamp(verticalScale,name == null || name.getString().isBlank() ? 5 : 9,20)
+		);
+		container.addSection( section );
+		return section;
+	}
+
+	public MultibarContainer() { this(UUID.randomUUID()); }
+
+	public MultibarContainer(UUID uuid) { this.uuid = uuid; }
+
+	public MultibarContainer(UUID uuid, boolean darkenSky, boolean dragonMusic, boolean thickenFog) {
+		this(uuid);
+		this.darkenSky = darkenSky;
+		this.dragonMusic = dragonMusic;
+		this.thickenFog = thickenFog;
+	}
+
+	public boolean isThickenFog() {
+		return thickenFog;
+	}
+
+	public void setThickenFog(boolean thickenFog) {
+		this.thickenFog = thickenFog;
+	}
+
+	public boolean isDragonMusic() {
+		return dragonMusic;
+	}
+
+	public void setDragonMusic(boolean dragonMusic) {
+		this.dragonMusic = dragonMusic;
+	}
+
+	public boolean isDarkenSky() {
+		return darkenSky;
+	}
+
+	public void setDarkenSky(boolean darkenSky) {
+		this.darkenSky = darkenSky;
+	}
+
+	public UUID getUuid() {
+		return uuid;
+	}
+
+	public boolean addSection(BarSection section) {
+		return this.barSectionList.add( section );
+	}
+
+	public boolean removeSection(BarSection section) {
+		return this.barSectionList.removeIf( s-> s.equals(section) || s.getUuid().equals(section.getUuid()) );
+	}
+
+	public boolean clearSections() {
+		int prevSize = this.barSectionList.size();
+		this.barSectionList.clear();
+		return prevSize > 0;
+	}
+
+	public void discard() {}
+}
