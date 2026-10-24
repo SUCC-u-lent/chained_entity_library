@@ -2,9 +2,11 @@ package com.ubunifu.multibossbar.common.networking.barPacket;
 
 import com.ubunifu.multibossbar.common.MultibossbarMod;
 import com.ubunifu.multibossbar.common.boss_bar.*;
+import com.ubunifu.multibossbar.common.networking.serverBarPacket.ServerBarPacketType;
 import com.ubunifu.multibossbar.server.bossbar.*;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.*;
+import net.minecraft.entity.boss.BossBar;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.payload.CustomPayload;
@@ -13,7 +15,7 @@ import net.minecraft.text.TextCodecs;
 import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
+import java.util.*;
 
 public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPayload {
 
@@ -48,7 +50,7 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 			case UPDATE_STYLE -> buf.writeEnumConstant(section.getStyle());
 			case UPDATE_SCALE -> buf.writeFloat(section.getVerticalScale());
 			case REMOVE_BAR -> {} // Got all shit.
-			case CREATE,ADD_BAR -> {
+			case CREATE -> {
 				TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(buf,section.getName());
 				buf.writeDouble(section.getPercentage());
 				buf.writeEnumConstant(section.getColor());
@@ -60,6 +62,55 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 
 		BossBarS2CPacket packet = new BossBarS2CPacket(buf);
 		players.forEach(packet::send);
+	}
+	public void receive(ClientPlayNetworking.Context context) {
+		PacketByteBuf buf = this.data();
+		BarPacketType packetType = buf.readEnumConstant(BarPacketType.class);
+		UUID containerUUID = buf.readUuid();
+		UUID sectionUUID = buf.readUuid();
+
+		MultibarContainer container = MultibarContainer.getOptionalClientBar(containerUUID).orElse(null);
+		if (container == null) {
+			MultibossbarMod.LOGGER.warn("Failed to acquire container with uuid: {}",containerUUID);
+			return;
+		}
+		BarSection section = container.getOptionalSection(sectionUUID).orElse(null);
+
+		switch (packetType) {
+			case UPDATE_NAME -> {
+				Objects.requireNonNull(section);
+				section.setName(TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode(buf));
+			}
+			case UPDATE_PERCENTAGE -> {
+				Objects.requireNonNull(section);
+				section.setPercentage(buf.readDouble());
+			}
+			case UPDATE_COLOR -> {
+				Objects.requireNonNull(section);
+				section.setColor(buf.readEnumConstant(BossBar.Color.class));
+			}
+			case UPDATE_STYLE -> {
+				Objects.requireNonNull(section);
+				section.setStyle(buf.readEnumConstant(BossBar.Style.class));
+			}
+			case UPDATE_SCALE -> {
+				Objects.requireNonNull(section);
+				section.setVerticalScale(buf.readFloat());
+			}
+			case REMOVE_BAR -> {
+				if (section == null) return;
+				container.removeSection(section);
+			}
+			case CREATE -> section = MultibarContainer.createSection(
+				container,
+				sectionUUID,
+				TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode(buf),
+				buf.readDouble(),
+				buf.readEnumConstant(BossBar.Color.class),
+				buf.readEnumConstant(BossBar.Style.class),
+				buf.readFloat()
+			);
+		}
 	}
 	public static void sendPacket(BarPacketType barPacketType,
 	                              MultibarContainer container,
@@ -79,8 +130,5 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 
 	public void send(ServerPlayerEntity player) {
 		ServerPlayNetworking.send(player, this);
-	}
-
-	public void recieve(ClientPlayNetworking.Context context) {
 	}
 }

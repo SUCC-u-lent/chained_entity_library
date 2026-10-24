@@ -2,7 +2,6 @@ package com.ubunifu.multibossbar.common.networking.serverBarPacket;
 
 import com.ubunifu.multibossbar.common.MultibossbarMod;
 import com.ubunifu.multibossbar.common.boss_bar.*;
-import com.ubunifu.multibossbar.server.bossbar.ServerMultibarContainer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.*;
 import net.minecraft.network.*;
@@ -12,7 +11,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.*;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
+import java.util.*;
 
 public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements CustomPayload {
 
@@ -49,6 +48,28 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 		}
 	}
 
+	public void receive(ClientPlayNetworking.Context context) {
+		PacketByteBuf buf = this.data();
+		ServerBarPacketType packetType = buf.readEnumConstant(ServerBarPacketType.class);
+		UUID containerUUID = buf.readUuid();
+		switch (packetType) {
+			case CREATE -> {
+				MultibarContainer container = new MultibarContainer(
+					containerUUID,
+					buf.readBoolean(),
+					buf.readBoolean(),
+					buf.readBoolean()
+				);
+				MultibarContainer.MULTIBAR_CONTAINERS.put(containerUUID, container);
+			}
+			case UPDATE_FOG -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setThickenFog(buf.readBoolean()));
+			case UPDATE_MUSIC -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setDragonMusic(buf.readBoolean()));
+			case UPDATE_DARK_SKY -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setDarkenSky(buf.readBoolean()));
+			case CLEAR_BARS -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(MultibarContainer::clearSections);
+			case REMOVE -> MultibarContainer.MULTIBAR_CONTAINERS.remove(containerUUID);
+		}
+	}
+
 
 	@Override
 	public Id<? extends CustomPayload> getId() {
@@ -60,8 +81,5 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 
 	public void send(ServerPlayerEntity player) {
 		ServerPlayNetworking.send(player, this);
-	}
-
-	public void recieve(ClientPlayNetworking.Context context) {
 	}
 }

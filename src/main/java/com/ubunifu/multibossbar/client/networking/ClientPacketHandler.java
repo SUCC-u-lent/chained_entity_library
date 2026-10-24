@@ -13,7 +13,7 @@ public class ClientPacketHandler {
 	public static void registerPackets() {
 		PayloadTypeRegistry.playS2C().register( BossBarContainerS2CPacket.ID, BossBarContainerS2CPacket.CODEC );
 		PayloadTypeRegistry.playS2C().register( BossBarS2CPacket.ID, BossBarS2CPacket.CODEC );
-		ClientPlayNetworking.registerGlobalReceiver(BossBarContainerS2CPacket.ID, BossBarContainerS2CPacket::recieve);
-		ClientPlayNetworking.registerGlobalReceiver(BossBarS2CPacket.ID, BossBarS2CPacket::recieve);
+		ClientPlayNetworking.registerGlobalReceiver(BossBarContainerS2CPacket.ID, BossBarContainerS2CPacket::receive);
+		ClientPlayNetworking.registerGlobalReceiver(BossBarS2CPacket.ID, BossBarS2CPacket::receive);
 	}
 }

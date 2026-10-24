@@ -8,6 +8,15 @@ import org.jetbrains.annotations.*;
 import java.util.*;
 
 public class MultibarContainer {
+	public static final HashMap<UUID,MultibarContainer> MULTIBAR_CONTAINERS = new HashMap<>();
+	@Deprecated
+	public static @NotNull MultibarContainer getClientBar(UUID barUUID) {
+		return Objects.requireNonNull(MULTIBAR_CONTAINERS.get(barUUID));
+	}
+	public static Optional<MultibarContainer> getOptionalClientBar(UUID barUUID) {
+		return Optional.ofNullable(MULTIBAR_CONTAINERS.get(barUUID));
+	}
+
 	protected final UUID uuid;
 	protected boolean darkenSky;
 	protected boolean dragonMusic;
@@ -23,10 +32,23 @@ public class MultibarContainer {
 	 * @param style The style of the bar.
 	 * @return A reference to the stored value, this means changing values in the returned object will reflect in the container.
 	 */
-	public static BarSection createSection(@NotNull MultibarContainer container, @Nullable Text name, float percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
+	public static BarSection createSection(@NotNull MultibarContainer container, @Nullable Text name, double percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
 		BarSection section = new BarSection(
 			container,
 			UUID.randomUUID(),
+			name == null ? Text.empty() : name,
+			Math.clamp(percentage,0.0,1.0),
+			color,
+			style,
+			Math.clamp(verticalScale,name == null || name.getString().isBlank() ? 5 : 9,20)
+		);
+		container.addSection( section );
+		return section;
+	}
+	public static BarSection createSection(@NotNull MultibarContainer container, UUID uuid, @Nullable Text name, double percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
+		BarSection section = new BarSection(
+			container,
+			uuid,
 			name == null ? Text.empty() : name,
 			Math.clamp(percentage,0.0,1.0),
 			color,
@@ -91,4 +113,10 @@ public class MultibarContainer {
 	}
 
 	public void discard() {}
+
+	public Optional<BarSection> getOptionalSection(UUID sectionUUID) {
+		return this.barSectionList.stream()
+			.filter(f->f.getUuid().equals(sectionUUID))
+			.findFirst();
+	}
 }
