@@ -12,14 +12,16 @@ public class BarSection {
 	protected double percentage;
 	protected BossBar.Color color;
 	protected BossBar.Style style;
+	protected RowType type;
 	protected float verticalScale;
+	protected boolean visible;
 
 	protected BarSection(MultibarContainer container, UUID uuid) {
 		this.uuid = uuid;
 		this.container = container;
 		onConstructed();
 	}
-	protected BarSection(MultibarContainer container, UUID uuid,Text name, double percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
+	protected BarSection(MultibarContainer container, UUID uuid, Text name, double percentage, BossBar.Color color, BossBar.Style style, RowType rowType, float verticalScale) {
 		this.uuid = uuid;
 		this.container = container;
 		this.name = name;
@@ -27,6 +29,7 @@ public class BarSection {
 		this.color = color;
 		this.style = style;
 		this.verticalScale = verticalScale;
+		this.type = rowType;
 		onConstructed();
 	}
 
@@ -78,5 +81,21 @@ public class BarSection {
 
 	public void setVerticalScale(float verticalScale) {
 		this.verticalScale = verticalScale;
+	}
+
+	public boolean isVisible() {
+		return visible;
+	}
+
+	public void setVisible(boolean visible) {
+		this.visible = visible;
+	}
+
+	public RowType getType() {
+		return type;
+	}
+
+	public void setType(RowType type) {
+		this.type = type;
 	}
 }

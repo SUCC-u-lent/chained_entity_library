@@ -4,6 +4,7 @@ import com.ubunifu.multibossbar.common.boss_bar.*;
 import com.ubunifu.multibossbar.common.networking.barPacket.*;
 import com.ubunifu.multibossbar.common.networking.serverBarPacket.*;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
 
 import java.util.*;
 
@@ -60,8 +61,22 @@ public class ServerMultibarContainer extends MultibarContainer {
 	}
 
 	@Override
+	public void setVisible(boolean visible) {
+		boolean prev = this.isVisible();
+		super.setVisible(visible);
+		if (prev != visible) BossBarContainerS2CPacket.sendPacket(ServerBarPacketType.UPDATE_VISIBILITY, this, this.PLAYERS);
+	}
+
+	@Override
+	public void setDisplayName(Text displayName) {
+		Text prev = this.getDisplayName();
+		super.setDisplayName(displayName);
+		if (prev != displayName) BossBarContainerS2CPacket.sendPacket(ServerBarPacketType.UPDATE_NAME, this, this.PLAYERS);
+	}
+
+	@Override
 	public boolean addSection(BarSection section) {
-		BossBarS2CPacket.sendPacket(BarPacketType.ADD_BAR, this, section, this.PLAYERS);
+		BossBarS2CPacket.sendPacket(BarPacketType.CREATE, this, section, this.PLAYERS);
 		return super.addSection(section);
 	}
 

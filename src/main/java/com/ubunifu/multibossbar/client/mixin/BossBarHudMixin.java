@@ -2,12 +2,7 @@ package com.ubunifu.multibossbar.client.mixin;
 
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.ubunifu.multibossbar.common.MultibossbarMod;
-import com.ubunifu.multibossbar.common.boss_bar.SectionType;
-import com.ubunifu.multibossbar.common.boss_bar.container.ClientMultiBossBar;
-import com.ubunifu.multibossbar.common.boss_bar.container.MultiBossBar;
-import com.ubunifu.multibossbar.common.boss_bar.sections.ClientBossBarSection;
-import com.ubunifu.multibossbar.common.boss_bar.sections.framework.BossBarSection;
+import com.ubunifu.multibossbar.common.boss_bar.*;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.GuiGraphics;
@@ -70,7 +65,7 @@ public abstract class BossBarHudMixin {
 	@Inject(method = "render",at=@At("HEAD"))
 	private void renderMixin(GuiGraphics graphics, CallbackInfo ci)
 	{
-		List<ClientMultiBossBar> bossBars = List.copyOf(ClientMultibarReciever.multiBossBars);
+		List<MultibarContainer> bossBars = List.copyOf(MultibarContainer.MULTIBAR_CONTAINERS.values());
 
 		if (!bossBars.isEmpty()) {
 			this.client.getProfiler().push("bossHealth");
@@ -78,9 +73,9 @@ public abstract class BossBarHudMixin {
 			int j = 12;
 
 			int k = i / 2 - 91;
-			for(ClientMultiBossBar clientBossBar : bossBars) {
+			for(MultibarContainer clientBossBar : bossBars) {
 				if (!clientBossBar.isVisible()) continue;
-				if (clientBossBar.getBossBars().isEmpty()) continue;
+				if (clientBossBar.isEmpty()) continue;
 				int assetHeight = mbbl$renderBar(graphics, k, j, clientBossBar);
 				Text text = clientBossBar.getDisplayName();
 				if (text == null) continue;
@@ -103,29 +98,18 @@ public abstract class BossBarHudMixin {
 	}
 
 	@Unique
-	private ClientBossBarSection attemptCast(BossBarSection section)
-	{
-		try{
-			return (ClientBossBarSection) section;
-		}catch (Exception e){
-			MultibossbarMod.LOGGER.warn("Failed to cast section to client version",e);
-			return null;
-		}
-	}
-
-	@Unique
-	private int mbbl$renderBar(GuiGraphics graphics, int x, int y, ClientMultiBossBar bar)
+	private int mbbl$renderBar(GuiGraphics graphics, int x, int y, MultibarContainer bar)
 	{
 		int PADDING = 2;
 		int barWidth = 182;
 		int barY = y;
-		List<BossBarSection> sections = bar.getMinibars();
+		List<BarSection> sections = bar.getBars();
 		for (int i = 0; i < sections.size(); i++) {
-			ClientBossBarSection section = attemptCast(sections.get( i ));
-			if (section == null) continue;
-			if (section.getSectionType() == SectionType.MULTI && i < sections.size() - 1) {
-				ClientBossBarSection nextBar = attemptCast(sections.get( ++i ));
-				if (nextBar != null){
+			BarSection section = sections.get( i );
+			if (section == null || !section.isVisible()) continue;
+			if (section.getType() == RowType.MULTI && i < sections.size() - 1) {
+				BarSection nextBar = sections.get( ++i );
+				if (nextBar != null && nextBar.isVisible()){
 					int section1Height = mbbl$renderSection(graphics,x,barY,barWidth/2,section);
 					int section2Height = mbbl$renderSection(graphics,x+(barWidth/2),barY,barWidth/2,nextBar);
 					int textX = x + PADDING; // Add 1 to get rid of border
@@ -189,10 +173,10 @@ public abstract class BossBarHudMixin {
 	}
 
 	@Unique
-	private int mbbl$renderSection(GuiGraphics graphics, int x, int y, int width, ClientBossBarSection section) {
+	private int mbbl$renderSection(GuiGraphics graphics, int x, int y, int width, BarSection section) {
 		int imageHeight = mbbl$drawBarSection(graphics, x, y, section, width, BACKGROUND_TEXTURES, NOTCHED_BACKGROUND_TEXTURES);
 		int filledWidth = MathHelper.ceil(
-			MathHelper.clamp(section.getPercent(), 0.0F, 1.0F) * width
+			MathHelper.clamp(section.getPercentage(), 0.0F, 1.0F) * width
 		);
 		if (filledWidth > 0)
 			mbbl$drawBarSection(graphics, x, y, section, filledWidth, PROGRESS_TEXTURES, NOTCHED_PROGRESS_TEXTURES);
@@ -201,10 +185,10 @@ public abstract class BossBarHudMixin {
 
 	@SuppressWarnings("resource")
 	@Unique
-	private int mbbl$drawBarSection(GuiGraphics graphics, int x, int y, ClientBossBarSection bar, int width, Identifier[] textures, Identifier[] alternativeTextures) {
+	private int mbbl$drawBarSection(GuiGraphics graphics, int x, int y, BarSection bar, int width, Identifier[] textures, Identifier[] alternativeTextures) {
 		boolean isEmptyText = bar.getName() == null || bar.getName().getString().isEmpty() || bar.getName().getString().isBlank();
 		int scaleClampOffset = isEmptyText ? 0 : 5;
-		int barHeight = MathHelper.clamp(bar.getScaleSupplier(), scaleClampOffset + 5, scaleClampOffset + 20);
+		int barHeight = (int) MathHelper.clamp(bar.getVerticalScale(), scaleClampOffset + 5, scaleClampOffset + 20);
 		RenderSystem.enableBlend();
 
 		Sprite sprite;
@@ -225,34 +209,34 @@ public abstract class BossBarHudMixin {
 	@Inject(method = "shouldPlayDragonMusic",at=@At("RETURN"),cancellable = true)
 	private void playBossMusic(CallbackInfoReturnable<Boolean> cir)
 	{
-		List<ClientMultiBossBar> bossBars = List.copyOf(ClientMultibarReciever.multiBossBars);
-		Stream<ClientMultiBossBar> bossBarStream = bossBars.stream();
+		List<MultibarContainer> bossBars = List.copyOf(MultibarContainer.MULTIBAR_CONTAINERS.values());
+		Stream<MultibarContainer> bossBarStream = bossBars.stream();
 		if (bossBars.isEmpty()){
 			bossBarStream.close(); // Close stream.
 			return;
 		}
-		if (bossBarStream.filter(MultiBossBar::isVisible).anyMatch(MultiBossBar::isDragonMusic)) cir.setReturnValue(true);
+		if (bossBarStream.filter(MultibarContainer::isVisible).anyMatch(MultibarContainer::isDragonMusic)) cir.setReturnValue(true);
 	}
 	@Inject(method = "shouldDarkenSky",at=@At("RETURN"),cancellable = true)
 	private void darkenSky(CallbackInfoReturnable<Boolean> cir)
 	{
-		List<ClientMultiBossBar> bossBars = List.copyOf(ClientMultibarReciever.multiBossBars);
-		Stream<ClientMultiBossBar> bossBarStream = bossBars.stream();
+		List<MultibarContainer> bossBars = List.copyOf(MultibarContainer.MULTIBAR_CONTAINERS.values());
+		Stream<MultibarContainer> bossBarStream = bossBars.stream();
 		if (bossBars.isEmpty()){
 			bossBarStream.close(); // Close stream.
 			return;
 		}
-		if (bossBarStream.filter(MultiBossBar::isVisible).anyMatch(MultiBossBar::isDarkenSky)) cir.setReturnValue(true);
+		if (bossBarStream.filter(MultibarContainer::isVisible).anyMatch(MultibarContainer::isDarkenSky)) cir.setReturnValue(true);
 	}
 	@Inject(method = "shouldThickenFog",at=@At("RETURN"),cancellable = true)
 	private void thickenFog(CallbackInfoReturnable<Boolean> cir)
 	{
-		List<ClientMultiBossBar> bossBars = List.copyOf(ClientMultibarReciever.multiBossBars);
-		Stream<ClientMultiBossBar> bossBarStream = bossBars.stream();
+		List<MultibarContainer> bossBars = List.copyOf(MultibarContainer.MULTIBAR_CONTAINERS.values());
+		Stream<MultibarContainer> bossBarStream = bossBars.stream();
 		if (bossBars.isEmpty()){
 			bossBarStream.close(); // Close stream.
 			return;
 		}
-		if (bossBarStream.filter(MultiBossBar::isVisible).anyMatch(MultiBossBar::isThickenFog)) cir.setReturnValue(true);
+		if (bossBarStream.filter(MultibarContainer::isVisible).anyMatch(MultibarContainer::isThickenFog)) cir.setReturnValue(true);
 	}
 }

@@ -8,6 +8,7 @@ import net.minecraft.network.*;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.payload.*;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.TextCodecs;
 import net.minecraft.util.*;
 import org.jetbrains.annotations.NotNull;
 
@@ -36,10 +37,14 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 		buf.writeUuid(container.getUuid());
 		switch (packetType) {
 			case CREATE -> {
+				TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(buf, container.getDisplayName());
 				buf.writeBoolean(container.isDarkenSky());
 				buf.writeBoolean(container.isDragonMusic());
 				buf.writeBoolean(container.isThickenFog());
+				buf.writeBoolean(container.isVisible());
 			}
+			case UPDATE_VISIBILITY -> buf.writeBoolean(container.isVisible());
+			case UPDATE_NAME -> TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(buf, container.getDisplayName());
 			case REMOVE, CLEAR_BARS -> {}
 			case UPDATE_FOG -> buf.writeBoolean(container.isThickenFog());
 			case UPDATE_MUSIC -> buf.writeBoolean(container.isDragonMusic());
@@ -56,6 +61,8 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 			case CREATE -> {
 				MultibarContainer container = new MultibarContainer(
 					containerUUID,
+					TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode(buf),
+					buf.readBoolean(),
 					buf.readBoolean(),
 					buf.readBoolean(),
 					buf.readBoolean()
@@ -65,6 +72,8 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 			case UPDATE_FOG -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setThickenFog(buf.readBoolean()));
 			case UPDATE_MUSIC -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setDragonMusic(buf.readBoolean()));
 			case UPDATE_DARK_SKY -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setDarkenSky(buf.readBoolean()));
+			case UPDATE_VISIBILITY -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setVisible(buf.readBoolean()));
+			case UPDATE_NAME -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(c->c.setDisplayName(TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.decode(buf)));
 			case CLEAR_BARS -> MultibarContainer.getOptionalClientBar(containerUUID).ifPresent(MultibarContainer::clearSections);
 			case REMOVE -> MultibarContainer.MULTIBAR_CONTAINERS.remove(containerUUID);
 		}
@@ -77,7 +86,7 @@ public record BossBarContainerS2CPacket(@NotNull PacketByteBuf data) implements 
 	}
 
 	public static final Id<BossBarContainerS2CPacket> ID =
-		new Id<>(new Identifier(MultibossbarMod.MOD_ID, "multibossbar_s2c"));
+		new Id<>(new Identifier(MultibossbarMod.MOD_ID, "container_s2c"));
 
 	public void send(ServerPlayerEntity player) {
 		ServerPlayNetworking.send(player, this);

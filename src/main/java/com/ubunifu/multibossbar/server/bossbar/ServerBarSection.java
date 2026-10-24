@@ -8,8 +8,8 @@ import net.minecraft.text.Text;
 import java.util.UUID;
 
 public class ServerBarSection extends BarSection {
-	protected ServerBarSection(MultibarContainer container, UUID uuid, Text name, double percentage, BossBar.Color color, BossBar.Style style, float verticalScale) {
-		super(container, uuid, name, percentage, color, style, verticalScale);
+	protected ServerBarSection(MultibarContainer container, UUID uuid, Text name, double percentage, BossBar.Color color, BossBar.Style style, RowType rowType, float verticalScale) {
+		super(container, uuid, name, percentage, color, style, rowType, verticalScale);
 	}
 
 	protected ServerBarSection(MultibarContainer container, UUID uuid) {
@@ -55,5 +55,19 @@ public class ServerBarSection extends BarSection {
 		float prev = this.getVerticalScale();
 		super.setVerticalScale(verticalScale);
 		if (prev != verticalScale) BossBarS2CPacket.sendPacket(BarPacketType.UPDATE_SCALE, this.getContainer(), this);
+	}
+
+	@Override
+	public void setVisible(boolean visible) {
+		boolean prev = this.isVisible();
+		super.setVisible(visible);
+		if (prev != visible) BossBarS2CPacket.sendPacket(BarPacketType.UPDATE_VISIBILITY, this.getContainer(), this);
+	}
+
+	@Override
+	public void setType(RowType type) {
+		RowType prev = this.getType();
+		super.setType(type);
+		if (prev != type) BossBarS2CPacket.sendPacket(BarPacketType.UPDATE_TYPE, this.getContainer(), this);
 	}
 }

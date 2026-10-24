@@ -50,12 +50,16 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 			case UPDATE_STYLE -> buf.writeEnumConstant(section.getStyle());
 			case UPDATE_SCALE -> buf.writeFloat(section.getVerticalScale());
 			case REMOVE_BAR -> {} // Got all shit.
+			case UPDATE_VISIBILITY -> buf.writeBoolean(section.isVisible());
+			case UPDATE_TYPE -> buf.writeEnumConstant(section.getType());
 			case CREATE -> {
 				TextCodecs.UNLIMITED_TEXT_PACKET_CODEC.encode(buf,section.getName());
 				buf.writeDouble(section.getPercentage());
 				buf.writeEnumConstant(section.getColor());
 				buf.writeEnumConstant(section.getStyle());
+				buf.writeEnumConstant(section.getType());
 				buf.writeFloat(section.getVerticalScale());
+				buf.writeBoolean(section.isVisible());
 			}
 			default -> throw new UnsupportedOperationException("A case for "+barPacketType.name()+ " has not been implemented yet.");
 		}
@@ -101,6 +105,14 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 				if (section == null) return;
 				container.removeSection(section);
 			}
+			case UPDATE_VISIBILITY -> {
+				Objects.requireNonNull(section);
+				section.setVisible(buf.readBoolean());
+			}
+			case UPDATE_TYPE -> {
+				Objects.requireNonNull(section);
+				section.setType(buf.readEnumConstant(RowType.class));
+			}
 			case CREATE -> section = MultibarContainer.createSection(
 				container,
 				sectionUUID,
@@ -108,7 +120,9 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 				buf.readDouble(),
 				buf.readEnumConstant(BossBar.Color.class),
 				buf.readEnumConstant(BossBar.Style.class),
-				buf.readFloat()
+				buf.readEnumConstant(RowType.class),
+				buf.readFloat(),
+				buf.readBoolean()
 			);
 		}
 	}
@@ -126,7 +140,7 @@ public record BossBarS2CPacket(@NotNull PacketByteBuf data) implements CustomPay
 	}
 
 	public static final Id<BossBarS2CPacket> ID =
-		new Id<>(new Identifier(MultibossbarMod.MOD_ID, "multibossbar_s2c"));
+		new Id<>(new Identifier(MultibossbarMod.MOD_ID, "section_s2c"));
 
 	public void send(ServerPlayerEntity player) {
 		ServerPlayNetworking.send(player, this);
