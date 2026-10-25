@@ -2,11 +2,11 @@
 	"schema_version": 1,
 	"quilt_loader": {
 		"group": "${group}",
-		"id": "multibossbar",
+		"id": "chainedentity",
 		"version": "${version}",
 		"metadata": {
-			"name": "Multibossbar Library",
-			"description": "Allows multiple boss bars to be displayed cleanly at the same time.",
+			"name": "Chained Entity Library",
+			"description": "Allows multiple entities to be linked together",
 			"contributors": {
 				"Ubunifu": "Owner"
 			},
@@ -15,12 +15,11 @@
 				"issues": "https://github.com/QuiltMC/quilt-template-mod/issues",
 				"sources": "https://github.com/QuiltMC/quilt-template-mod"
 			},
-			"icon": "assets/multibossbar/icon.png"
+			"icon": "assets/chainedentity/icon.png"
 		},
 		"intermediate_mappings": "net.fabricmc:intermediary",
 		"entrypoints": {
-			"init": "com.ubunifu.multibossbar.common.MultibossbarMod",
-			"client": "com.ubunifu.multibossbar.client.ClientMultibossbarMod"
+			"init": "com.ubunifu.chainedentity.common.MultibossbarMod"
 		},
 		"depends": [
 			{
@@ -38,6 +37,6 @@
 		]
 	},
 	"mixin": [
-		"client.multibossbar.mixins.json"
+		"chainedentity.mixins.json"
 	]
 }

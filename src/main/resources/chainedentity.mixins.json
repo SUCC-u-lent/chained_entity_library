@@ -1,12 +1,9 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.ubunifu.multibossbar.client.mixin",
+  "package": "com.ubunifu.chainedentity.common.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": [
-    "BossBarHudMixin",
-    "GuiGraphicsAccessor"
-  ],
+  "client": [],
   "injectors": {
     "defaultRequire": 1
 	}
