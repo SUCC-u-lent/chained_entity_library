@@ -19,7 +19,8 @@ final class ChainOperator {
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity,world)-> CHAIN_UNITS.remove(entity.getUuid()));
 		ServerTickEvents.END_WORLD_TICK.register((world)->{
 			MinecraftServer server = world.getServer();
-			CHAIN_UNITS.forEach((uuid,unit)->{
+			Map<UUID,ChainUnit> copy = Map.copyOf(CHAIN_UNITS);
+			copy.forEach((uuid,unit)->{
 				if (!(unit instanceof Entity ue)) return;
 				if (!ue.getWorld().equals(world)) return;
 				switch (unit.getChainType()) {
