@@ -19,7 +19,7 @@
 		},
 		"intermediate_mappings": "net.fabricmc:intermediary",
 		"entrypoints": {
-			"init": "com.ubunifu.chainedentity.common.MultibossbarMod"
+			"init": "com.ubunifu.chainedentity.common.ChainedEntityMod"
 		},
 		"depends": [
 			{
