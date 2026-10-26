@@ -1,11 +1,22 @@
 package com.ubunifu.chainedentity.common;
 
-/** The type of the chain, defined in the {@link com.ubunifu.chainedentity.common.ChainRoot} */
+/** The type of the chain, defined in the {@link com.ubunifu.chainedentity.common.ChainUnit} */
 public enum ChainType {
 	/** Makes this part lag behind its parent. */
-	DELAYED_FOLLOW,
-	/** Makes the part act like a IK part, allowing for dynamic limbs */
-	INVERSE_KINEMATIC,
+	DELAYED_FOLLOW {
+		@Override
+		float getDelay() {
+			return 0.1f;
+		}
+	},
 	/** Makes the part act like a serpent making things like entity roll ripple through the body */
-	SERPENTINE
+	SERPENTINE {
+		@Override
+		float getDelay() {
+			return 2;
+		}
+	};
+
+	/** Higher = faster chase. */
+	abstract float getDelay();
 }

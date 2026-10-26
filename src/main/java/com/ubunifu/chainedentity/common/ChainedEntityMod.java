@@ -10,5 +10,7 @@ public class ChainedEntityMod implements ModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	@Override
-	public void onInitialize(ModContainer mod) {}
+	public void onInitialize(ModContainer mod) {
+		ChainOperator.Register();
+	}
 }
