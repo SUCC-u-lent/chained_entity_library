@@ -51,7 +51,7 @@ final class ChainOperator {
 		Vec3d offset = parentPos.subtract(entity.getPos());
 		EulerAngle offsetAngle = unit.getAngle();
 
-		double stiffness = unit.getChainType().getDelay();
+		double stiffness = unit.getDelay();
 		double damping = 0.15;
 
 		Vec3d acceleration = offset.multiply(stiffness)
@@ -115,7 +115,7 @@ final class ChainOperator {
 			if (!entity.getWorld().isClient) entity.discard();
 			return;
 		}
-		final long delay = (long) (chainUnit.getSegmentPosition() * chainUnit.getChainType().getDelay());
+		final long delay = (long) (chainUnit.getSegmentPosition() * chainUnit.getDelay());
 		final long targetTick = world.getTime() - delay;
 		Deque<EulerHistory> partHistory = HISTORY_EULER_MAP.getOrDefault(parent.getUuid(), new ArrayDeque<>());
 

@@ -15,6 +15,9 @@ public interface ChainUnit {
 		entity.setYaw(angle.getYaw());
 		entity.setPitch(angle.getPitch());
 	}
+	default float getDelay() {
+		return this.getChainType().getDelay();
+	}
 	float getScale();
 	ChainUnit[] getChainParts();
 	ChainUnit getParent();
