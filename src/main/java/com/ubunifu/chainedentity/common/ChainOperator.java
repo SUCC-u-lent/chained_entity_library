@@ -65,7 +65,10 @@ final class ChainOperator {
 
 		// Rotation
 		EulerAngle current = unit.getAngle();
-		EulerAngle target = addEulerAngle(((ChainUnit) parent).getAngle(), unit.getTargetAngleOffset());
+		EulerAngle target = addEulerAngle(
+			addEulerAngle(((ChainUnit) parent).getAngle(), unit.getTargetAngleOffset()),
+			offsetAngle
+		);
 
 		float rotationFactor = 0.15f;
 
@@ -89,8 +92,13 @@ final class ChainOperator {
 			return null;
 		}
 
+		final float epsilon = 1;
+
 		for (EulerHistory entry : history) {
-			if (entry.age() == targetTick) {
+			if (
+				targetTick < entry.age() + epsilon
+				&& targetTick > entry.age() - epsilon
+			) {
 				return entry.angle();
 			}
 		}
@@ -118,49 +126,112 @@ final class ChainOperator {
 		final long delay = (long) (chainUnit.getSegmentPosition() * chainUnit.getDelay());
 		final long targetTick = world.getTime() - delay;
 		Deque<EulerHistory> partHistory = HISTORY_EULER_MAP.getOrDefault(parent.getUuid(), new ArrayDeque<>());
+		EulerAngle historicalAngle = getAngleAtTick(partHistory,targetTick);
+		boolean hasHistoricalAngle = historicalAngle == null;
+		if (hasHistoricalAngle) historicalAngle = parentUnit.getAngle(); // No angle difference if no history.
+		if (chainUnit.useAdvancedFollowing() && hasHistoricalAngle) {
 
-		final double spacing = 1;
-		final double maxBend = Math.toRadians(30); // how far it may curl away from straight behind
+			final double spacing = 1;
+			final double maxBend = Math.toRadians(30); // how far it may curl away from straight behind
 
-		EulerAngle parentAngle = getAngleAtTick(partHistory, targetTick);
-		if (parentAngle == null) parentAngle = parentUnit.getAngle();
-		Vec3d parentPos = parentLivingEntity.getPos();
+			float roll = chainUnit.getAngle().getRoll();
 
-		float p = (float) Math.toRadians(parentAngle.getPitch());
-		float y = (float) Math.toRadians(parentAngle.getYaw());
-		Vec3d behind = new Vec3d(
-			MathHelper.sin(y) * MathHelper.cos(p),
-			MathHelper.sin(p),
-			-MathHelper.cos(y) * MathHelper.cos(p)
-		);
+			EulerAngle parentAngle = parentUnit.getAngle();
+			Vec3d parentPos = parentLivingEntity.getPos();
 
-		Vec3d dir = entity.getPos().subtract(parentPos);
-		dir = dir.lengthSquared() < 1.0E-6 ? behind : dir.normalize();
+			float p = (float) Math.toRadians(parentAngle.getPitch());
+			float y = (float) Math.toRadians(parentAngle.getYaw());
+			Vec3d behind = new Vec3d(
+				MathHelper.sin(y) * MathHelper.cos(p),
+				MathHelper.sin(p),
+				-MathHelper.cos(y) * MathHelper.cos(p)
+			);
 
-		double dot = MathHelper.clamp(dir.dotProduct(behind), -1.0, 1.0);
-		double angle = Math.acos(dot);
-		if (angle > maxBend) {
-			Vec3d perp = dir.subtract(behind.multiply(dot));
-			if (perp.lengthSquared() < 1.0E-6) {
-				// exactly opposite: pick any sideways direction
-				perp = behind.crossProduct(new Vec3d(0, 1, 0));
-				if (perp.lengthSquared() < 1.0E-6) perp = behind.crossProduct(new Vec3d(1, 0, 0));
+			Vec3d dir = entity.getPos().subtract(parentPos);
+			dir = dir.lengthSquared() < 1.0E-6 ? behind : dir.normalize();
+
+			double dot = MathHelper.clamp(dir.dotProduct(behind), -1.0, 1.0);
+			double angle = Math.acos(dot);
+			if (angle > maxBend) {
+				Vec3d perp = dir.subtract(behind.multiply(dot));
+				if (perp.lengthSquared() < 1.0E-6) {
+					// exactly opposite: pick any sideways direction
+					perp = behind.crossProduct(new Vec3d(0, 1, 0));
+					if (perp.lengthSquared() < 1.0E-6) perp = behind.crossProduct(new Vec3d(1, 0, 0));
+				}
+				perp = perp.normalize();
+				dir = behind.multiply(Math.cos(maxBend)).add(perp.multiply(Math.sin(maxBend)));
 			}
-			perp = perp.normalize();
-			dir = behind.multiply(Math.cos(maxBend)).add(perp.multiply(Math.sin(maxBend)));
+
+			Vec3d targetPos = parentPos.add(dir.multiply(spacing * chainUnit.getScale()));
+
+			float newPitch = parentAngle.getPitch();
+			float newYaw = parentAngle.getYaw();
+			float parentRoll = parentAngle.getRoll();
+			float newRoll = MathHelper.lerpDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
+
+			entity.refreshPositionAndAngles(targetPos.x, targetPos.y, targetPos.z, newYaw, newPitch);
+			chainUnit.setAngle(new EulerAngle(newPitch, newYaw, newRoll));
+		} else {
+
+			final double spacing = 1;
+			final double maxBend = Math.toRadians(30); // how far it may curl away from straight behind
+
+			float roll = chainUnit.getAngle().getRoll();
+
+			EulerAngle parentAngle = parentUnit.getAngle();
+			Vec3d parentPos = parentLivingEntity.getPos();
+
+			float p = (float) Math.toRadians(parentAngle.getPitch());
+			float y = (float) Math.toRadians(parentAngle.getYaw());
+			Vec3d behind = new Vec3d(
+				MathHelper.sin(y) * MathHelper.cos(p),
+				MathHelper.sin(p),
+				-MathHelper.cos(y) * MathHelper.cos(p)
+			);
+
+			Vec3d dir = entity.getPos().subtract(parentPos);
+			dir = dir.lengthSquared() < 1.0E-6 ? behind : dir.normalize();
+
+			double dot = MathHelper.clamp(dir.dotProduct(behind), -1.0, 1.0);
+			double angle = Math.acos(dot);
+			if (angle > maxBend) {
+				Vec3d perp = dir.subtract(behind.multiply(dot));
+				if (perp.lengthSquared() < 1.0E-6) {
+					// exactly opposite: pick any sideways direction
+					perp = behind.crossProduct(new Vec3d(0, 1, 0));
+					if (perp.lengthSquared() < 1.0E-6) perp = behind.crossProduct(new Vec3d(1, 0, 0));
+				}
+				perp = perp.normalize();
+				dir = behind.multiply(Math.cos(maxBend)).add(perp.multiply(Math.sin(maxBend)));
+			}
+
+			Vec3d targetPos = parentPos.add(dir.multiply(spacing * chainUnit.getScale()));
+
+			Vec3d look = parentPos.subtract(targetPos);
+			double horizontal = Math.sqrt(look.x * look.x + look.z * look.z);
+			float newYaw = (float) Math.toDegrees(Math.atan2(-look.x, look.z));
+			float newPitch = (float) -Math.toDegrees(Math.atan2(look.y, horizontal));
+			float parentRoll = parentAngle.getRoll();
+			float newRoll = MathHelper.lerpDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
+
+			entity.refreshPositionAndAngles(targetPos.x, targetPos.y, targetPos.z, newYaw, newPitch);
+			chainUnit.setAngle(new EulerAngle(newPitch, newYaw, newRoll));
 		}
+	}
 
-		Vec3d targetPos = parentPos.add(dir.multiply(spacing * chainUnit.getScale()));
-
-		Vec3d look = parentPos.subtract(targetPos);
-		double horizontal = Math.sqrt(look.x * look.x + look.z * look.z);
-		float newYaw = (float) Math.toDegrees(Math.atan2(-look.x, look.z));
-		float newPitch = (float) -Math.toDegrees(Math.atan2(look.y, horizontal));
-		float parentRoll = parentAngle.getRoll();
-		float myRoll = chainUnit.getAngle().getRoll();
-		float newRoll = MathHelper.lerpDegrees(0.1F, myRoll, parentRoll); // lower = longer trailing wave
-
-		entity.refreshPositionAndAngles(targetPos.x, targetPos.y, targetPos.z, newYaw, newPitch);
-		chainUnit.setAngle(new EulerAngle(newPitch, newYaw, newRoll));
+	private static EulerAngle lerpAngle(EulerAngle a, EulerAngle b, double t) {
+		if (a.equals(b)) return a; //No need to lerp same value
+		float aPitch = a.getPitch();
+		float aYaw = a.getYaw();
+		float aRoll = a.getRoll();
+		float bPitch = b.getPitch();
+		float bYaw = b.getYaw();
+		float bRoll = b.getRoll();
+		return new EulerAngle(
+			(float) MathHelper.lerp(t,aPitch,bPitch),
+			(float) MathHelper.lerp(t,aYaw,bYaw),
+			(float) MathHelper.lerp(t,aRoll,bRoll)
+		);
 	}
 }

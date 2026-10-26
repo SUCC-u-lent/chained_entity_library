@@ -30,7 +30,10 @@ public interface ChainUnit {
 		}
 		return position;
 	}
+	default boolean useAdvancedFollowing() { return false; }
 
 	Vec3d getTargetOffset();
 	default EulerAngle getTargetAngleOffset() { return new EulerAngle(0,0,0); }
+
+    default float getSerpentineTrail() { return 0.1f; }
 }
