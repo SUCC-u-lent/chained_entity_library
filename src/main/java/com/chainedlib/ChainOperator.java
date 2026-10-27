@@ -1,4 +1,4 @@
-package com.ubunifu.chainedentity.common;
+package com.chainedlib;
 
 import com.mojang.datafixers.util.Pair;
 import net.fabricmc.fabric.api.event.lifecycle.v1.*;
@@ -77,10 +77,10 @@ final class ChainOperator {
 			MathHelper.lerp(
 				rotationFactor, current.getPitch(), target.getPitch()
 			),
-			MathHelper.lerpDegrees(
+			MathHelper.lerpAngleDegrees(
 				rotationFactor, current.getYaw(), target.getYaw()
 			),
-			MathHelper.lerpDegrees(
+			MathHelper.lerpAngleDegrees(
 				rotationFactor, current.getRoll(), target.getRoll()
 			)
 		));
@@ -169,7 +169,7 @@ final class ChainOperator {
 			float newPitch = parentAngle.getPitch();
 			float newYaw = parentAngle.getYaw();
 			float parentRoll = parentAngle.getRoll();
-			float newRoll = MathHelper.lerpDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
+			float newRoll = MathHelper.lerpAngleDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
 
 			entity.refreshPositionAndAngles(targetPos.x, targetPos.y, targetPos.z, newYaw, newPitch);
 			chainUnit.setAngle(new EulerAngle(newPitch, newYaw, newRoll));
@@ -214,7 +214,7 @@ final class ChainOperator {
 			float newYaw = (float) Math.toDegrees(Math.atan2(-look.x, look.z));
 			float newPitch = (float) -Math.toDegrees(Math.atan2(look.y, horizontal));
 			float parentRoll = parentAngle.getRoll();
-			float newRoll = MathHelper.lerpDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
+			float newRoll = MathHelper.lerpAngleDegrees(chainUnit.getSerpentineTrail(), roll, parentRoll); // lower = longer trailing wave
 
 			entity.refreshPositionAndAngles(targetPos.x, targetPos.y, targetPos.z, newYaw, newPitch);
 			chainUnit.setAngle(new EulerAngle(newPitch, newYaw, newRoll));

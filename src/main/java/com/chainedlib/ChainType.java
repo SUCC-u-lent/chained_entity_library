@@ -1,6 +1,6 @@
-package com.ubunifu.chainedentity.common;
+package com.chainedlib;
 
-/** The type of the chain, defined in the {@link com.ubunifu.chainedentity.common.ChainUnit} */
+/** The type of the chain, defined in the {@link ChainUnit} */
 public enum ChainType {
 	/** Makes this part lag behind its parent. */
 	DELAYED_FOLLOW(0.1f),

@@ -1,23 +1,9 @@
 # Chained Entities Library
 
-A quilt mod that speeds up making chained entities
+## Setup
 
-## Usage
-
-MultiBossBar is intended to be used as a dependency by other mods. It provides a Java API for creating and managing boss bars composed of multiple individual bars.
+For setup instructions, please see the [Fabric Documentation page](https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up) related to the IDE that you are using.
 
 ## License
 
-This mod is licensed under the [GNU Lesser General Public License](./LICENSE-TEMPLATE.md).
-
-The License terms dictate:
-### You may:
-- Distribute
-- Use
-- Copy
-- Use another license on projects/libraries/mods that use this mod as a dependency
-
-### You must not:
-- Modify
-- Distribute without crediting the original author.
-- Use any other license than the GNU Lesser General Public Licence on distributions.
+This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.

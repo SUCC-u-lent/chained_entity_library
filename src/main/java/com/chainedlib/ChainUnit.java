@@ -1,4 +1,4 @@
-package com.ubunifu.chainedentity.common;
+package com.chainedlib;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.*;
