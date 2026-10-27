@@ -15,9 +15,11 @@ public class ChainHitboxMixin {
 		ordinal = 0
 	))
 	private static void changedParamaters(Args args) {
-		args.set(4, 0.25f);
-		args.set(5, 1.0f);
-		args.set(6, 1.0f);
-		args.set(7, 1.0f);
+		try{
+			args.set(3, 0.25f);
+			args.set(4, 1.0f);
+			args.set(5, 1.0f);
+			args.set(6, 1.0f);
+		}catch (Exception ignored){} // Just in case.
 	}
 }
