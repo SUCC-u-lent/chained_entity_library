@@ -23,7 +23,11 @@
 		]
 	},
 	"mixins": [
-		"chainedlib.mixins.json"
+		"chainedlib.mixins.json",
+		{
+			"environment": "client",
+			"config": "client.chainedlib.mixins.json"
+		}
 	],
 	"depends": {
 		"fabricloader": ">=0.20.1",

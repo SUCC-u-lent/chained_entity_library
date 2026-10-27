@@ -1,4 +1,4 @@
-package com.chainedlib.mixin;
+package com.chainedlib.client.mixin;
 
 
 import com.chainedlib.ChainUnit;
